@@ -10,6 +10,7 @@ function EventBlock({ event }: { event: CalendarEvent }) {
   const top = (event.start - DAY_START) * PX_PER_MIN;
   const height = (event.end - event.start) * PX_PER_MIN;
   const isAi = event.source === "ai";
+  const isPreference = event.source === "preference";
   const showTime = height >= 34;
 
   return (
@@ -17,7 +18,9 @@ function EventBlock({ event }: { event: CalendarEvent }) {
       className={`absolute left-16 right-2 overflow-hidden rounded-lg border px-2.5 py-1 text-[12.5px] leading-tight ${
         isAi
           ? "border-dashed border-accent bg-accent-soft text-accent"
-          : "border-border bg-surface text-foreground shadow-sm"
+          : isPreference
+            ? "border-preference bg-preference-soft text-foreground"
+            : "border-border bg-surface text-foreground shadow-sm"
       }`}
       style={{ top, height: Math.max(height, 17) }}
     >
@@ -25,6 +28,14 @@ function EventBlock({ event }: { event: CalendarEvent }) {
         {isAi && (
           <span className="rounded-full bg-accent px-1.5 py-[1px] text-[9.5px] font-semibold uppercase tracking-wide text-accent-foreground">
             AI
+          </span>
+        )}
+        {isPreference && (
+          <span
+            className="rounded-full px-1.5 py-[1px] text-[9.5px] font-semibold uppercase tracking-wide text-white"
+            style={{ backgroundColor: "var(--preference)" }}
+          >
+            Fixed
           </span>
         )}
         <span className="truncate font-medium">{event.title}</span>

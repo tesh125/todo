@@ -26,3 +26,20 @@ model Task {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 }
+
+model Preference {
+  id String @id @default(cuid())
+  // Free-text bullet, e.g. "prefer deep work in the morning" or "exercise".
+  // Always shown to the AI scheduler as context/reasoning input.
+  text String
+  // When locked, this becomes a hard block on the calendar (like a real
+  // event) that the scheduler can never place a task over — e.g. breakfast
+  // 7:00-7:30. When not locked, startMinute/endMinute are null and the
+  // bullet is just a preference the AI weighs, not a fixed block.
+  locked      Boolean  @default(false)
+  startMinute Int?
+  endMinute   Int?
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

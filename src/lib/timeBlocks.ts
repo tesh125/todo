@@ -1,4 +1,4 @@
-import { TaskDTO } from "@/lib/types";
+import { PreferenceDTO, TaskDTO } from "@/lib/types";
 
 export type CalendarEvent = {
   id: string;
@@ -6,8 +6,25 @@ export type CalendarEvent = {
   /** Minutes since midnight. */
   start: number;
   end: number;
-  source: "google" | "ai";
+  source: "google" | "ai" | "preference";
 };
+
+/**
+ * Locked preferences ("breakfast 7:00-7:30") become hard blocks on the
+ * calendar, same as a real event — the scheduler treats them as busy time
+ * and never places a task over them.
+ */
+export function lockedPreferenceEvents(preferences: PreferenceDTO[]): CalendarEvent[] {
+  return preferences
+    .filter((p): p is PreferenceDTO & { startMinute: number; endMinute: number } => p.locked && p.startMinute !== null && p.endMinute !== null)
+    .map((p) => ({
+      id: `pref-${p.id}`,
+      title: p.text,
+      start: p.startMinute,
+      end: p.endMinute,
+      source: "preference" as const,
+    }));
+}
 
 const WORK_START = 9 * 60; // 9:00
 const WORK_END = 18 * 60; // 18:00
@@ -75,6 +92,20 @@ export function formatMinutes(minutes: number): string {
   const period = h >= 12 ? "PM" : "AM";
   const hour12 = h % 12 === 0 ? 12 : h % 12;
   return `${hour12}:${m.toString().padStart(2, "0")} ${period}`;
+}
+
+/** For an <input type="time"> value, e.g. 450 -> "07:30". */
+export function minutesToTimeInputValue(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
+}
+
+/** Inverse of minutesToTimeInputValue, e.g. "07:30" -> 450. */
+export function timeInputValueToMinutes(value: string): number | null {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
 }
 
 export { WORK_START, WORK_END };

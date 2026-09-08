@@ -7,3 +7,12 @@ export type TaskDTO = {
   order: number;
   estimatedMinutes: number | null;
 };
+
+export type PreferenceDTO = {
+  id: string;
+  text: string;
+  locked: boolean;
+  startMinute: number | null;
+  endMinute: number | null;
+  order: number;
+};

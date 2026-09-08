@@ -41,6 +41,28 @@ const NAV_ITEMS = [
       </svg>
     ),
   },
+  {
+    href: "/preferences",
+    label: "Preferences",
+    icon: (active: boolean) => (
+      <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5">
+        <circle
+          cx="12"
+          cy="12"
+          r="8.5"
+          stroke={active ? "var(--accent-foreground)" : "currentColor"}
+          strokeWidth="1.8"
+        />
+        <path
+          d="M9 12.5l2 2 4-4.5"
+          stroke={active ? "var(--accent-foreground)" : "currentColor"}
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    ),
+  },
 ];
 
 export default function Sidebar() {

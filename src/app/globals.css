@@ -12,6 +12,8 @@
   --today: #5b5bf6;
   --tomorrow: #ef9c4c;
   --later: #8f8fa3;
+  --preference: #2fb380;
+  --preference-soft: #e6f7ef;
 }
 
 @theme inline {
@@ -26,6 +28,8 @@
   --color-today: var(--today);
   --color-tomorrow: var(--tomorrow);
   --color-later: var(--later);
+  --color-preference: var(--preference);
+  --color-preference-soft: var(--preference-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -40,6 +44,8 @@
     --accent: #7c7cff;
     --accent-soft: #22223a;
     --accent-foreground: #ffffff;
+    --preference: #3ecf94;
+    --preference-soft: #123527;
   }
 }
 
