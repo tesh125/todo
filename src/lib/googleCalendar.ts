@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { CalendarEvent } from "@/lib/timeBlocks";
-import { minutesInAppTZFromISO, minutesTodayToUTC } from "@/lib/timezone";
+import { minutesInAppTZFromISO, minutesTodayToUTC, todayKeyInAppTZ } from "@/lib/timezone";
 
 const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const SINGLETON_ID = "singleton";
@@ -200,14 +200,17 @@ export async function createGoogleEvent(title: string, startMinute: number, endM
  * Writes any newly-placed task block to the connected Google Calendar as a
  * real event. Skips blocks that aren't task-derived (real Google events,
  * locked preferences) and tasks that already have a googleEventId, so this
- * is safe to call on every page load.
+ * is safe to call on every page load. Returns the ids of every task that
+ * ends up with an event on Google (whether just-created or already synced),
+ * so the UI can show which blocks are actually on the calendar.
  */
 export async function syncTaskBlocksToGoogle(
   blocks: CalendarEvent[],
   tasks: { id: string; googleEventId: string | null }[]
-): Promise<void> {
+): Promise<Set<string>> {
+  const synced = new Set<string>();
   const account = await getGoogleConnection();
-  if (!account) return;
+  if (!account) return synced;
 
   const taskById = new Map(tasks.map((t) => [t.id, t]));
 
@@ -215,11 +218,59 @@ export async function syncTaskBlocksToGoogle(
     if (block.source !== "ai" || !block.id.startsWith("ai-")) continue;
     const taskId = block.id.slice(3);
     const task = taskById.get(taskId);
-    if (!task || task.googleEventId) continue;
+    if (!task) continue;
+
+    if (task.googleEventId) {
+      synced.add(taskId);
+      continue;
+    }
 
     const eventId = await createGoogleEvent(block.title, block.start, block.end);
     if (eventId) {
       await prisma.task.update({ where: { id: taskId }, data: { googleEventId: eventId } });
+      synced.add(taskId);
     }
   }
+
+  return synced;
+}
+
+/**
+ * Same idea as syncTaskBlocksToGoogle, but for preference-derived blocks
+ * (locked exact-time and windowed non-negotiables). Unlike a task, a
+ * preference recurs every day and a windowed one can land at a different
+ * time each day, so "already has a googleEventId" isn't enough to skip —
+ * it only counts if that event was created *for today*. A new day means a
+ * fresh event.
+ */
+export async function syncPreferenceBlocksToGoogle(
+  blocks: CalendarEvent[],
+  preferences: { id: string; googleEventId: string | null; googleEventDate: string | null }[]
+): Promise<Set<string>> {
+  const synced = new Set<string>();
+  const account = await getGoogleConnection();
+  if (!account) return synced;
+
+  const today = todayKeyInAppTZ();
+  const prefById = new Map(preferences.map((p) => [p.id, p]));
+
+  for (const block of blocks) {
+    if (block.source !== "preference" || !block.id.startsWith("pref-")) continue;
+    const prefId = block.id.slice(5);
+    const pref = prefById.get(prefId);
+    if (!pref) continue;
+
+    if (pref.googleEventId && pref.googleEventDate === today) {
+      synced.add(prefId);
+      continue;
+    }
+
+    const eventId = await createGoogleEvent(block.title, block.start, block.end);
+    if (eventId) {
+      await prisma.preference.update({ where: { id: prefId }, data: { googleEventId: eventId, googleEventDate: today } });
+      synced.add(prefId);
+    }
+  }
+
+  return synced;
 }

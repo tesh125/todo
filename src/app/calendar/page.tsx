@@ -2,7 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { serializePreference, serializeTask } from "@/lib/serialize";
 import { bucketForDate } from "@/lib/buckets";
 import { lockedPreferenceEvents, placeWindowedPreferences, suggestTimeBlocks } from "@/lib/timeBlocks";
-import { getGoogleConnection, getTodaysGoogleEvents, syncTaskBlocksToGoogle } from "@/lib/googleCalendar";
+import {
+  getGoogleConnection,
+  getTodaysGoogleEvents,
+  syncPreferenceBlocksToGoogle,
+  syncTaskBlocksToGoogle,
+} from "@/lib/googleCalendar";
 import { getSettings } from "@/lib/settings";
 import { nowMinutesInAppTZ } from "@/lib/timezone";
 import TimeBlockCalendar from "@/components/TimeBlockCalendar";
@@ -37,8 +42,13 @@ export default async function CalendarPage({
     nowMinutes: nowMinutesInAppTZ(),
   });
 
+  let syncedIds = new Set<string>();
   if (googleAccount) {
-    await syncTaskBlocksToGoogle(aiEvents, tasks);
+    const [taskSync, prefSync] = await Promise.all([
+      syncTaskBlocksToGoogle(aiEvents, tasks),
+      syncPreferenceBlocksToGoogle([...preferenceBlocks, ...windowedBlocks], preferences),
+    ]);
+    syncedIds = new Set([...taskSync, ...prefSync]);
   }
 
   return (
@@ -48,7 +58,7 @@ export default async function CalendarPage({
         <GoogleConnect connected={Boolean(googleAccount)} email={googleAccount?.email ?? null} error={google_error ?? null} />
       </header>
       <div className="mx-auto grid max-w-5xl gap-6 p-8 md:grid-cols-[1fr_260px]">
-        <TimeBlockCalendar events={[...fixedEvents, ...aiEvents]} />
+        <TimeBlockCalendar events={[...fixedEvents, ...aiEvents]} syncedIds={syncedIds} googleConnected={Boolean(googleAccount)} />
 
         <aside className="flex flex-col gap-3">
           <div className="rounded-2xl border border-border bg-surface p-4">

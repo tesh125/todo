@@ -79,6 +79,14 @@ model Preference {
   durationMinutes   Int?
   windowStartMinute Int?
   windowEndMinute   Int?
+  // Unlike a Task's googleEventId (created once, ever), a preference recurs
+  // every day and can land at a different time each day (especially a
+  // windowed one), so a single event can't represent it. Instead this is
+  // the id of the event created *for googleEventDate specifically*; once
+  // that date is no longer today, a fresh event gets created for the new
+  // day rather than reusing this one.
+  googleEventId     String?
+  googleEventDate   String?
   order       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -6,7 +6,27 @@ const DEFAULT_DAY_START = 7 * 60; // 7:00
 const DEFAULT_DAY_END = 20 * 60; // 20:00
 const PX_PER_MIN = 80 / 60;
 
-function EventBlock({ event, dayStart }: { event: CalendarEvent; dayStart: number }) {
+function underlyingId(event: CalendarEvent): string | null {
+  if (event.source === "ai" && event.id.startsWith("ai-")) return event.id.slice(3);
+  if (event.source === "preference" && event.id.startsWith("pref-")) return event.id.slice(5);
+  return null;
+}
+
+function SyncedBadge() {
+  return (
+    <span
+      title="On your Google Calendar"
+      className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full"
+      style={{ backgroundColor: "var(--preference)" }}
+    >
+      <svg viewBox="0 0 12 12" className="h-2 w-2" fill="none">
+        <path d="M2 6l2.5 2.5L10 3" stroke="white" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </span>
+  );
+}
+
+function EventBlock({ event, dayStart, synced }: { event: CalendarEvent; dayStart: number; synced: boolean }) {
   const top = (event.start - dayStart) * PX_PER_MIN;
   const height = (event.end - event.start) * PX_PER_MIN;
   const isAi = event.source === "ai";
@@ -38,7 +58,8 @@ function EventBlock({ event, dayStart }: { event: CalendarEvent; dayStart: numbe
             Fixed
           </span>
         )}
-        <span className="truncate font-medium">{event.title}</span>
+        <span className="min-w-0 flex-1 truncate font-medium">{event.title}</span>
+        {synced && <SyncedBadge />}
       </div>
       {showTime && (
         <span className="text-[11px] opacity-70">
@@ -49,7 +70,15 @@ function EventBlock({ event, dayStart }: { event: CalendarEvent; dayStart: numbe
   );
 }
 
-export default function TimeBlockCalendar({ events }: { events: CalendarEvent[] }) {
+export default function TimeBlockCalendar({
+  events,
+  syncedIds,
+  googleConnected,
+}: {
+  events: CalendarEvent[];
+  syncedIds: Set<string>;
+  googleConnected: boolean;
+}) {
   // The grid always covers at least 7am-8pm, but stretches to fit anything
   // scheduled earlier or later (e.g. a non-negotiable window reaching into
   // the evening) instead of letting it render outside the card.
@@ -63,7 +92,13 @@ export default function TimeBlockCalendar({ events }: { events: CalendarEvent[] 
   const totalHeight = (dayEnd - dayStart) * PX_PER_MIN;
 
   return (
-    <div className="relative rounded-2xl border border-border bg-surface p-4">
+    <div className="rounded-2xl border border-border bg-surface p-4">
+      {googleConnected && (
+        <div className="mb-3 flex items-center gap-1.5 text-[11px] text-muted">
+          <SyncedBadge />
+          <span>means it&apos;s a real event on your Google Calendar</span>
+        </div>
+      )}
       <div className="relative" style={{ height: totalHeight }}>
         {hours.map((m) => (
           <div key={m} className="absolute left-0 right-0 flex items-start" style={{ top: (m - dayStart) * PX_PER_MIN }}>
@@ -71,9 +106,10 @@ export default function TimeBlockCalendar({ events }: { events: CalendarEvent[] 
             <div className="h-px flex-1 bg-border" />
           </div>
         ))}
-        {events.map((event) => (
-          <EventBlock key={event.id} event={event} dayStart={dayStart} />
-        ))}
+        {events.map((event) => {
+          const id = underlyingId(event);
+          return <EventBlock key={event.id} event={event} dayStart={dayStart} synced={id !== null && syncedIds.has(id)} />;
+        })}
       </div>
     </div>
   );
