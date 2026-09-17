@@ -102,7 +102,7 @@ export async function getGoogleConnection() {
   return prisma.googleAccount.findUnique({ where: { id: SINGLETON_ID } });
 }
 
-async function getValidAccessToken(): Promise<string | null> {
+export async function getValidAccessToken(): Promise<string | null> {
   const account = await prisma.googleAccount.findUnique({ where: { id: SINGLETON_ID } });
   if (!account) return null;
 
@@ -140,21 +140,11 @@ type GoogleEvent = {
 
 const DEDICATED_CALENDAR_NAME = "Todo Blocker";
 
-/**
- * Every block the app creates goes on its own dedicated calendar (named
- * "Todo Blocker") instead of the user's main one, so it never clutters
- * their real calendar. Finds the existing one by id if already known,
- * otherwise creates it on Google and caches the id. The main calendar is
- * still read separately (getTodaysGoogleEvents) to know what's busy.
- */
-async function getOrCreateDedicatedCalendarId(accessToken: string): Promise<string | null> {
-  const account = await prisma.googleAccount.findUnique({ where: { id: SINGLETON_ID } });
-  if (account?.calendarId) return account.calendarId;
-
+async function createCalendarOnGoogle(accessToken: string, name: string): Promise<{ id: string; name: string } | null> {
   const res = await fetch("https://www.googleapis.com/calendar/v3/calendars", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ summary: DEDICATED_CALENDAR_NAME }),
+    body: JSON.stringify({ summary: name }),
   });
   if (!res.ok) return null;
 
@@ -164,10 +154,69 @@ async function getOrCreateDedicatedCalendarId(accessToken: string): Promise<stri
 
   await prisma.googleAccount.update({
     where: { id: SINGLETON_ID },
-    data: { calendarId, calendarName: DEDICATED_CALENDAR_NAME },
+    data: { calendarId, calendarName: name },
   });
 
-  return calendarId;
+  return { id: calendarId, name };
+}
+
+/**
+ * Every block the app creates goes on its own dedicated calendar instead of
+ * the user's main one, so it never clutters their real calendar. Finds the
+ * existing one by id if already known (whether auto-created or explicitly
+ * picked by the user), otherwise creates a new "Todo Blocker" calendar and
+ * caches the id. The main calendar is still read separately
+ * (getTodaysGoogleEvents) to know what's busy.
+ */
+async function getOrCreateDedicatedCalendarId(accessToken: string): Promise<string | null> {
+  const account = await prisma.googleAccount.findUnique({ where: { id: SINGLETON_ID } });
+  if (account?.calendarId) return account.calendarId;
+
+  const created = await createCalendarOnGoogle(accessToken, DEDICATED_CALENDAR_NAME);
+  return created?.id ?? null;
+}
+
+export type GoogleCalendarOption = {
+  id: string;
+  name: string;
+  primary: boolean;
+};
+
+/**
+ * Lists the user's Google calendars that the app could plausibly write to
+ * (anything they own or can edit), so the UI can offer a picker instead of
+ * always auto-creating a brand new "Todo Blocker" calendar.
+ */
+export async function listGoogleCalendars(): Promise<GoogleCalendarOption[] | null> {
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) return null;
+
+  const res = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  const items: { id: string; summary?: string; primary?: boolean; accessRole?: string }[] = data.items ?? [];
+
+  return items
+    .filter((c) => c.accessRole === "owner" || c.accessRole === "writer")
+    .map((c) => ({ id: c.id, name: c.summary ?? c.id, primary: Boolean(c.primary) }));
+}
+
+/** Points the app at an existing calendar the user picked, instead of a newly-created one. */
+export async function setDedicatedCalendar(calendarId: string, calendarName: string) {
+  await prisma.googleAccount.update({
+    where: { id: SINGLETON_ID },
+    data: { calendarId, calendarName },
+  });
+}
+
+/** Creates a fresh calendar (default name "Todo Blocker") and points the app at it. */
+export async function createNewDedicatedCalendar(name: string = DEDICATED_CALENDAR_NAME) {
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) return null;
+  return createCalendarOnGoogle(accessToken, name);
 }
 
 /**

@@ -12,6 +12,7 @@ import { getSettings } from "@/lib/settings";
 import { nowMinutesInAppTZ } from "@/lib/timezone";
 import TimeBlockCalendar from "@/components/TimeBlockCalendar";
 import GoogleConnect from "@/components/GoogleConnect";
+import CalendarPicker from "@/components/CalendarPicker";
 
 export const dynamic = "force-dynamic";
 
@@ -53,14 +54,17 @@ export default async function CalendarPage({
 
   return (
     <div>
-      <header className="flex items-center justify-between border-b border-border bg-surface px-8 py-6">
+      <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-border bg-surface px-8 py-6">
         <h1 className="text-xl font-semibold tracking-tight">Time Blocks</h1>
-        <GoogleConnect
-          connected={Boolean(googleAccount)}
-          email={googleAccount?.email ?? null}
-          calendarName={googleAccount?.calendarName ?? null}
-          error={google_error ?? null}
-        />
+        <div className="flex flex-wrap items-center gap-4">
+          {googleAccount && (
+            <CalendarPicker
+              currentCalendarId={googleAccount.calendarId}
+              currentCalendarName={googleAccount.calendarName}
+            />
+          )}
+          <GoogleConnect connected={Boolean(googleAccount)} email={googleAccount?.email ?? null} error={google_error ?? null} />
+        </div>
       </header>
       <div className="mx-auto grid max-w-5xl gap-6 p-8 md:grid-cols-[1fr_260px]">
         <TimeBlockCalendar events={[...fixedEvents, ...aiEvents]} syncedIds={syncedIds} googleConnected={Boolean(googleAccount)} />
