@@ -13,6 +13,10 @@ export async function PATCH(
     locked?: boolean;
     startMinute?: number | null;
     endMinute?: number | null;
+    windowed?: boolean;
+    durationMinutes?: number | null;
+    windowStartMinute?: number | null;
+    windowEndMinute?: number | null;
     order?: number;
   } = {};
 
@@ -26,6 +30,17 @@ export async function PATCH(
   }
   if (typeof body.startMinute === "number" || body.startMinute === null) data.startMinute = body.startMinute;
   if (typeof body.endMinute === "number" || body.endMinute === null) data.endMinute = body.endMinute;
+  if (typeof body.windowed === "boolean") {
+    data.windowed = body.windowed;
+    if (!body.windowed) {
+      data.durationMinutes = null;
+      data.windowStartMinute = null;
+      data.windowEndMinute = null;
+    }
+  }
+  if (typeof body.durationMinutes === "number" || body.durationMinutes === null) data.durationMinutes = body.durationMinutes;
+  if (typeof body.windowStartMinute === "number" || body.windowStartMinute === null) data.windowStartMinute = body.windowStartMinute;
+  if (typeof body.windowEndMinute === "number" || body.windowEndMinute === null) data.windowEndMinute = body.windowEndMinute;
   if (typeof body.order === "number") data.order = body.order;
 
   const preference = await prisma.preference.update({ where: { id }, data });

@@ -14,6 +14,10 @@ export type PreferenceDTO = {
   locked: boolean;
   startMinute: number | null;
   endMinute: number | null;
+  windowed: boolean;
+  durationMinutes: number | null;
+  windowStartMinute: number | null;
+  windowEndMinute: number | null;
   order: number;
 };
 

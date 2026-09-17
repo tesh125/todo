@@ -69,6 +69,16 @@ model Preference {
   locked      Boolean  @default(false)
   startMinute Int?
   endMinute   Int?
+  // A non-negotiable that happens every day but isn't pinned to one exact
+  // time, e.g. "15 min reading" sometime 9-11pm, or "afternoon walk"
+  // sometime noon-5pm. The scheduler places it wherever it fits inside
+  // [windowStartMinute, windowEndMinute] each day, ahead of flexible tasks —
+  // it's guaranteed to happen, tasks work around it, not the reverse.
+  // Mutually exclusive with locked.
+  windowed          Boolean @default(false)
+  durationMinutes   Int?
+  windowStartMinute Int?
+  windowEndMinute   Int?
   order       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

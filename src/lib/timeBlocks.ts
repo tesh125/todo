@@ -26,6 +26,50 @@ export function lockedPreferenceEvents(preferences: PreferenceDTO[]): CalendarEv
     }));
 }
 
+/**
+ * Places each "non-negotiable" windowed preference (e.g. 15 min reading
+ * somewhere 9-11pm, or a 30 min walk somewhere noon-5pm) into the first open
+ * slot inside its own window, working around whatever's already busy —
+ * Google events and exact-time locked preferences. These get placed before
+ * flexible tasks, so they're guaranteed a slot; tasks schedule around them,
+ * not the other way around. A non-negotiable that genuinely can't fit its
+ * window today (fully booked) is skipped rather than forced.
+ */
+export function placeWindowedPreferences(preferences: PreferenceDTO[], busyEvents: CalendarEvent[]): CalendarEvent[] {
+  const windowed = preferences.filter(
+    (p): p is PreferenceDTO & { durationMinutes: number; windowStartMinute: number; windowEndMinute: number } =>
+      p.windowed && p.durationMinutes !== null && p.windowStartMinute !== null && p.windowEndMinute !== null
+  );
+
+  const busy = [...busyEvents].sort((a, b) => a.start - b.start);
+  const placed: CalendarEvent[] = [];
+
+  for (const pref of windowed) {
+    let cursor = pref.windowStartMinute;
+
+    for (const event of busy) {
+      if (cursor < event.end && cursor + pref.durationMinutes > event.start) {
+        cursor = event.end;
+      }
+    }
+
+    if (cursor + pref.durationMinutes > pref.windowEndMinute) continue;
+
+    const block: CalendarEvent = {
+      id: `pref-${pref.id}`,
+      title: pref.text,
+      start: cursor,
+      end: cursor + pref.durationMinutes,
+      source: "preference",
+    };
+    placed.push(block);
+    busy.push(block);
+    busy.sort((a, b) => a.start - b.start);
+  }
+
+  return placed;
+}
+
 export const DEFAULT_WORK_START = 9 * 60; // 9:00
 export const DEFAULT_WORK_END = 18 * 60; // 18:00
 const DEFAULT_TASK_MINUTES = 30;

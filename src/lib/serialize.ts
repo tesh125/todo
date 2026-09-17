@@ -20,6 +20,10 @@ export function serializePreference(pref: Preference): PreferenceDTO {
     locked: pref.locked,
     startMinute: pref.startMinute,
     endMinute: pref.endMinute,
+    windowed: pref.windowed,
+    durationMinutes: pref.durationMinutes,
+    windowStartMinute: pref.windowStartMinute,
+    windowEndMinute: pref.windowEndMinute,
     order: pref.order,
   };
 }

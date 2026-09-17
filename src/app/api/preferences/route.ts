@@ -26,8 +26,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const windowed = !locked && body.windowed === true;
+  const durationMinutes = windowed && typeof body.durationMinutes === "number" ? body.durationMinutes : null;
+  const windowStartMinute = windowed && typeof body.windowStartMinute === "number" ? body.windowStartMinute : null;
+  const windowEndMinute = windowed && typeof body.windowEndMinute === "number" ? body.windowEndMinute : null;
+
+  if (
+    windowed &&
+    (durationMinutes === null ||
+      durationMinutes <= 0 ||
+      windowStartMinute === null ||
+      windowEndMinute === null ||
+      windowEndMinute <= windowStartMinute ||
+      durationMinutes > windowEndMinute - windowStartMinute)
+  ) {
+    return NextResponse.json(
+      { error: "A non-negotiable needs a valid duration that fits inside its window" },
+      { status: 400 }
+    );
+  }
+
   const preference = await prisma.preference.create({
-    data: { text, locked, startMinute, endMinute },
+    data: { text, locked, startMinute, endMinute, windowed, durationMinutes, windowStartMinute, windowEndMinute },
   });
 
   return NextResponse.json(preference, { status: 201 });
