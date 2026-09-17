@@ -30,6 +30,18 @@ model Task {
   updatedAt        DateTime  @updatedAt
 }
 
+// Single row holding the connected Google account's OAuth tokens. This is a
+// personal single-user app, so there's never more than one of these.
+model GoogleAccount {
+  id           String   @id @default("singleton")
+  email        String?
+  accessToken  String
+  refreshToken String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 model Preference {
   id String @id @default(cuid())
   // Free-text bullet, e.g. "prefer deep work in the morning" or "exercise".

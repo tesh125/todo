@@ -31,18 +31,6 @@ const WORK_END = 18 * 60; // 18:00
 const DEFAULT_TASK_MINUTES = 30;
 
 /**
- * Stand-in for a real Google Calendar fetch. Swap this out once OAuth is
- * wired up — everything downstream just consumes CalendarEvent[].
- */
-export function getMockGoogleEvents(): CalendarEvent[] {
-  return [
-    { id: "gc-1", title: "Team standup", start: 9 * 60, end: 9 * 60 + 15, source: "google" },
-    { id: "gc-2", title: "Lunch", start: 12 * 60, end: 13 * 60, source: "google" },
-    { id: "gc-3", title: "1:1 with manager", start: 15 * 60, end: 15 * 60 + 30, source: "google" },
-  ];
-}
-
-/**
  * Placeholder for the real AI call: greedily drops today's open tasks into
  * the free gaps around existing calendar events, in bucket order. Replace
  * the scheduling logic here with a Claude API call once that's wired up —

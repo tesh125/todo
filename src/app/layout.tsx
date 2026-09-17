@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Blocker — Today, Tomorrow, Later",
+  title: "Todo Blocker",
   description: "A todo list that rolls itself forward, plus an AI-blocked calendar day.",
 };
 

@@ -67,7 +67,7 @@ export default function PreferencesBoard({ initialPreferences }: { initialPrefer
               onChange={(e) => setDraftLocked(e.target.checked)}
               className="h-4 w-4 rounded border-border accent-accent"
             />
-            Lock this to a specific time (blocks the calendar — nothing else can be scheduled over it)
+            Lock this to a specific time (blocks the calendar so nothing else can be scheduled over it)
           </label>
 
           {draftLocked && (
@@ -136,7 +136,7 @@ export default function PreferencesBoard({ initialPreferences }: { initialPrefer
       <div className="mt-6">
         <h2 className="mb-2 text-[13px] font-semibold text-muted">General preferences</h2>
         <p className="mb-2 text-[12px] text-muted">
-          Free text the AI reads as context every time it blocks your day — no fixed time attached.
+          Free text the AI reads as context every time it blocks your day, with no fixed time attached.
         </p>
         <div className="flex flex-col gap-2">
           {freeform.length === 0 && (
