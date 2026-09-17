@@ -1,8 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { PreferenceDTO } from "@/lib/types";
-import { formatMinutes, timeInputValueToMinutes } from "@/lib/timeBlocks";
+import { PreferenceDTO, SettingsDTO } from "@/lib/types";
+import { formatMinutes, minutesToTimeInputValue, timeInputValueToMinutes } from "@/lib/timeBlocks";
+import { detectRoutine } from "@/lib/routineDetection";
 
 type Mode = "freeform" | "fixed" | "windowed";
 
@@ -12,16 +13,48 @@ const MODES: { value: Mode; label: string }[] = [
   { value: "windowed", label: "Non-negotiable" },
 ];
 
-export default function PreferencesBoard({ initialPreferences }: { initialPreferences: PreferenceDTO[] }) {
+export default function PreferencesBoard({
+  initialPreferences,
+  workStartMinute,
+}: {
+  initialPreferences: PreferenceDTO[];
+  workStartMinute: SettingsDTO["workStartMinute"];
+}) {
   const [preferences, setPreferences] = useState<PreferenceDTO[]>(initialPreferences);
   const [draftText, setDraftText] = useState("");
   const [draftMode, setDraftMode] = useState<Mode>("freeform");
+  const [modeTouched, setModeTouched] = useState(false);
+  const [autoDetected, setAutoDetected] = useState(false);
   const [draftStart, setDraftStart] = useState("07:00");
   const [draftEnd, setDraftEnd] = useState("08:00");
   const [draftDuration, setDraftDuration] = useState("30");
   const [draftWindowStart, setDraftWindowStart] = useState("12:00");
   const [draftWindowEnd, setDraftWindowEnd] = useState("17:00");
   const [error, setError] = useState<string | null>(null);
+
+  function handleTextChange(value: string) {
+    setDraftText(value);
+    if (modeTouched) return; // user already picked a mode themselves — don't override it
+
+    const suggestion = detectRoutine(value, workStartMinute);
+    if (suggestion) {
+      setDraftMode("windowed");
+      setAutoDetected(true);
+      setDraftDuration(String(suggestion.durationMinutes));
+      setDraftWindowStart(minutesToTimeInputValue(suggestion.windowStartMinute));
+      setDraftWindowEnd(minutesToTimeInputValue(suggestion.windowEndMinute));
+    } else if (autoDetected) {
+      // text no longer matches a routine keyword — fall back, still untouched
+      setDraftMode("freeform");
+      setAutoDetected(false);
+    }
+  }
+
+  function handleModeClick(mode: Mode) {
+    setModeTouched(true);
+    setAutoDetected(false);
+    setDraftMode(mode);
+  }
 
   async function addPreference(e: FormEvent) {
     e.preventDefault();
@@ -78,6 +111,8 @@ export default function PreferencesBoard({ initialPreferences }: { initialPrefer
     setPreferences((p) => [...p, created]);
     setDraftText("");
     setDraftMode("freeform");
+    setModeTouched(false);
+    setAutoDetected(false);
   }
 
   async function deletePreference(pref: PreferenceDTO) {
@@ -95,17 +130,17 @@ export default function PreferencesBoard({ initialPreferences }: { initialPrefer
         <form onSubmit={addPreference} className="flex flex-col gap-3">
           <input
             value={draftText}
-            onChange={(e) => setDraftText(e.target.value)}
+            onChange={(e) => handleTextChange(e.target.value)}
             placeholder="e.g. exercise, 15 min reading, afternoon walk…"
             className="w-full rounded-lg border border-border bg-background px-3 py-2 text-[13.5px] outline-none placeholder:text-muted focus:border-accent"
           />
 
-          <div className="flex gap-1.5">
+          <div className="flex items-center gap-1.5">
             {MODES.map((m) => (
               <button
                 key={m.value}
                 type="button"
-                onClick={() => setDraftMode(m.value)}
+                onClick={() => handleModeClick(m.value)}
                 className={`rounded-full px-3 py-1 text-[12px] font-medium transition-colors ${
                   draftMode === m.value ? "bg-accent text-accent-foreground" : "bg-accent-soft text-muted hover:text-foreground"
                 }`}
@@ -113,6 +148,7 @@ export default function PreferencesBoard({ initialPreferences }: { initialPrefer
                 {m.label}
               </button>
             ))}
+            {autoDetected && <span className="text-[11px] text-muted">detected as routine, edit below if needed</span>}
           </div>
 
           {draftMode === "fixed" && (

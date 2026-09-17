@@ -24,7 +24,7 @@ export default async function PreferencesPage() {
       <div className="mx-auto max-w-2xl px-8 pt-8">
         <WorkdayHours initialSettings={settings} />
       </div>
-      <PreferencesBoard initialPreferences={preferences.map(serializePreference)} />
+      <PreferencesBoard initialPreferences={preferences.map(serializePreference)} workStartMinute={settings.workStartMinute} />
     </div>
   );
 }
