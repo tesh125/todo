@@ -6,10 +6,12 @@ import { useState } from "react";
 export default function GoogleConnect({
   connected,
   email,
+  calendarName,
   error,
 }: {
   connected: boolean;
   email: string | null;
+  calendarName: string | null;
   error: string | null;
 }) {
   const router = useRouter();
@@ -29,6 +31,7 @@ export default function GoogleConnect({
           <span className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: "var(--preference)" }} />
           {email ?? "Connected"}
         </span>
+        {calendarName && <span className="text-muted">writing to &ldquo;{calendarName}&rdquo;</span>}
         <button onClick={disconnect} disabled={disconnecting} className="text-muted underline hover:text-foreground">
           Disconnect
         </button>

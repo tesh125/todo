@@ -23,11 +23,18 @@ A todo list that rolls itself forward, plus a time-blocked calendar view.
 ## Google Calendar
 
 Connect from the Time Blocks page. That kicks off a normal OAuth login, then
-the app reads your real events for today and (soon) will write AI-placed
-blocks back onto your calendar as real events. Setup needs three env vars:
+the app reads your real events for today from your main calendar (so it
+knows what's busy), and writes every AI-placed and preference block as a
+real event onto its own dedicated calendar named "Todo Blocker" (created
+automatically on first sync) rather than cluttering your main one. Setup
+needs three env vars:
 
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` from a Google Cloud OAuth client
 - `GOOGLE_REDIRECT_URI` set to `<your app's base URL>/api/auth/google/callback`
+
+If you connected before the dedicated calendar was added, disconnect and
+reconnect once from the Time Blocks page — creating a calendar needs the
+broader `calendar` OAuth scope, which only takes effect on a fresh consent.
 
 See `src/lib/googleCalendar.ts` for the OAuth + Calendar API calls.
 

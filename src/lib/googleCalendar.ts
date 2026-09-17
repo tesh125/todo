@@ -2,7 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { CalendarEvent } from "@/lib/timeBlocks";
 import { minutesInAppTZFromISO, minutesTodayToUTC, todayKeyInAppTZ } from "@/lib/timezone";
 
-const SCOPE = "https://www.googleapis.com/auth/calendar.events";
+// Needs the full "calendar" scope (not just calendar.events) because
+// creating the dedicated "Todo Blocker" calendar itself requires
+// calendar-management access, on top of reading/writing events.
+const SCOPE = "https://www.googleapis.com/auth/calendar";
 const SINGLETON_ID = "singleton";
 
 function requireEnv(name: string): string {
@@ -135,6 +138,38 @@ type GoogleEvent = {
   end?: { dateTime?: string; date?: string };
 };
 
+const DEDICATED_CALENDAR_NAME = "Todo Blocker";
+
+/**
+ * Every block the app creates goes on its own dedicated calendar (named
+ * "Todo Blocker") instead of the user's main one, so it never clutters
+ * their real calendar. Finds the existing one by id if already known,
+ * otherwise creates it on Google and caches the id. The main calendar is
+ * still read separately (getTodaysGoogleEvents) to know what's busy.
+ */
+async function getOrCreateDedicatedCalendarId(accessToken: string): Promise<string | null> {
+  const account = await prisma.googleAccount.findUnique({ where: { id: SINGLETON_ID } });
+  if (account?.calendarId) return account.calendarId;
+
+  const res = await fetch("https://www.googleapis.com/calendar/v3/calendars", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ summary: DEDICATED_CALENDAR_NAME }),
+  });
+  if (!res.ok) return null;
+
+  const created = await res.json();
+  const calendarId: string | undefined = created.id;
+  if (!calendarId) return null;
+
+  await prisma.googleAccount.update({
+    where: { id: SINGLETON_ID },
+    data: { calendarId, calendarName: DEDICATED_CALENDAR_NAME },
+  });
+
+  return calendarId;
+}
+
 /**
  * Fetches today's events from the connected Google Calendar. Returns null if
  * no account is connected (caller should fall back to an empty calendar).
@@ -181,15 +216,21 @@ export async function createGoogleEvent(title: string, startMinute: number, endM
   const accessToken = await getValidAccessToken();
   if (!accessToken) return null;
 
-  const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      summary: title,
-      start: { dateTime: minutesTodayToUTC(startMinute).toISOString() },
-      end: { dateTime: minutesTodayToUTC(endMinute).toISOString() },
-    }),
-  });
+  const calendarId = await getOrCreateDedicatedCalendarId(accessToken);
+  if (!calendarId) return null;
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        summary: title,
+        start: { dateTime: minutesTodayToUTC(startMinute).toISOString() },
+        end: { dateTime: minutesTodayToUTC(endMinute).toISOString() },
+      }),
+    }
+  );
   if (!res.ok) return null;
 
   const created = await res.json();

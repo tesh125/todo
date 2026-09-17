@@ -42,6 +42,14 @@ model GoogleAccount {
   accessToken  String
   refreshToken String
   expiresAt    DateTime
+  // The app writes every block (task and preference) to this dedicated
+  // calendar rather than the user's main one, so it never clutters their
+  // real calendar. It still *reads* the main calendar to know what's busy.
+  // Created automatically on first sync; null until then. Tracked by id, so
+  // the user is free to rename the calendar in Google Calendar afterward
+  // without breaking anything.
+  calendarId   String?
+  calendarName String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 }

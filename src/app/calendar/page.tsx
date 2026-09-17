@@ -55,7 +55,12 @@ export default async function CalendarPage({
     <div>
       <header className="flex items-center justify-between border-b border-border bg-surface px-8 py-6">
         <h1 className="text-xl font-semibold tracking-tight">Time Blocks</h1>
-        <GoogleConnect connected={Boolean(googleAccount)} email={googleAccount?.email ?? null} error={google_error ?? null} />
+        <GoogleConnect
+          connected={Boolean(googleAccount)}
+          email={googleAccount?.email ?? null}
+          calendarName={googleAccount?.calendarName ?? null}
+          error={google_error ?? null}
+        />
       </header>
       <div className="mx-auto grid max-w-5xl gap-6 p-8 md:grid-cols-[1fr_260px]">
         <TimeBlockCalendar events={[...fixedEvents, ...aiEvents]} syncedIds={syncedIds} googleConnected={Boolean(googleAccount)} />
