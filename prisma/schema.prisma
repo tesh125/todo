@@ -4,7 +4,10 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Vercel's Neon marketplace integration prefixes every env var it creates
+  // with the storage resource's name (here "STORE_") rather than setting a
+  // plain DATABASE_URL — see README for details.
+  url      = env("STORE_DATABASE_URL")
 }
 
 model Task {
