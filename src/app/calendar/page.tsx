@@ -9,10 +9,11 @@ import {
   syncTaskBlocksToGoogle,
 } from "@/lib/googleCalendar";
 import { getSettings } from "@/lib/settings";
-import { nowMinutesInAppTZ } from "@/lib/timezone";
+import { nowMinutesInAppTZ, todayKeyInAppTZ } from "@/lib/timezone";
 import TimeBlockCalendar from "@/components/TimeBlockCalendar";
 import GoogleConnect from "@/components/GoogleConnect";
 import CalendarPicker from "@/components/CalendarPicker";
+import RefreshButton from "@/components/RefreshButton";
 
 export const dynamic = "force-dynamic";
 
@@ -34,9 +35,22 @@ export default async function CalendarPage({
   const preferenceDTOs = preferences.map(serializePreference);
   const freeformPreferences = preferenceDTOs.filter((p) => !p.locked && !p.windowed);
 
+  // Now that every calendar (including the app's own dedicated one) gets
+  // read back, exclude events the app itself already created — otherwise a
+  // synced task/preference would render twice: once as its real "AI"/"Fixed"
+  // block, once again as a plain event read straight off the calendar.
+  const today = todayKeyInAppTZ();
+  const knownEventIds = new Set(
+    [
+      ...tasks.map((t) => t.googleEventId),
+      ...preferences.filter((p) => p.googleEventDate === today).map((p) => p.googleEventId),
+    ].filter((id): id is string => Boolean(id))
+  );
+  const realGoogleEvents = (googleEvents ?? []).filter((e) => !knownEventIds.has(e.id));
+
   const preferenceBlocks = lockedPreferenceEvents(preferenceDTOs);
-  const windowedBlocks = placeWindowedPreferences(preferenceDTOs, [...(googleEvents ?? []), ...preferenceBlocks]);
-  const fixedEvents = [...(googleEvents ?? []), ...preferenceBlocks, ...windowedBlocks];
+  const windowedBlocks = placeWindowedPreferences(preferenceDTOs, [...realGoogleEvents, ...preferenceBlocks]);
+  const fixedEvents = [...realGoogleEvents, ...preferenceBlocks, ...windowedBlocks];
   const aiEvents = suggestTimeBlocks(todayTasks, fixedEvents, {
     workStart: settings.workStartMinute,
     workEnd: settings.workEndMinute,
@@ -64,6 +78,7 @@ export default async function CalendarPage({
             />
           )}
           <GoogleConnect connected={Boolean(googleAccount)} email={googleAccount?.email ?? null} error={google_error ?? null} />
+          <RefreshButton />
         </div>
       </header>
       <div className="mx-auto grid max-w-5xl gap-6 p-8 md:grid-cols-[1fr_260px]">

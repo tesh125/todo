@@ -219,9 +219,22 @@ export async function createNewDedicatedCalendar(name: string = DEDICATED_CALEND
   return createCalendarOnGoogle(accessToken, name);
 }
 
+async function listAllCalendarIds(accessToken: string): Promise<string[]> {
+  const res = await fetch("https://www.googleapis.com/calendar/v3/users/me/calendarList", {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) return ["primary"];
+
+  const data = await res.json();
+  const items: { id: string }[] = data.items ?? [];
+  return items.length > 0 ? items.map((c) => c.id) : ["primary"];
+}
+
 /**
- * Fetches today's events from the connected Google Calendar. Returns null if
- * no account is connected (caller should fall back to an empty calendar).
+ * Fetches today's events across *every* calendar the user has (not just the
+ * main one), so the Time Blocks view is a true picture of the day instead of
+ * missing anything living on a secondary calendar. Returns null if no
+ * account is connected (caller should fall back to an empty calendar).
  */
 export async function getTodaysGoogleEvents(): Promise<CalendarEvent[] | null> {
   const accessToken = await getValidAccessToken();
@@ -237,23 +250,34 @@ export async function getTodaysGoogleEvents(): Promise<CalendarEvent[] | null> {
     orderBy: "startTime",
   });
 
-  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) return null;
+  const calendarIds = await listAllCalendarIds(accessToken);
 
-  const data = await res.json();
-  const events: GoogleEvent[] = data.items ?? [];
+  const perCalendar = await Promise.all(
+    calendarIds.map(async (calendarId) => {
+      const res = await fetch(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      if (!res.ok) return [];
+      const data = await res.json();
+      return (data.items ?? []) as GoogleEvent[];
+    })
+  );
 
-  return events
-    .filter((e) => e.start?.dateTime && e.end?.dateTime) // skip all-day events
-    .map((e) => ({
-      id: e.id,
-      title: e.summary ?? "(no title)",
-      start: minutesInAppTZFromISO(e.start!.dateTime!),
-      end: minutesInAppTZFromISO(e.end!.dateTime!),
-      source: "google" as const,
-    }));
+  // The same event can appear on more than one calendar (e.g. an invite the
+  // user is also the organizer of), so dedupe by id.
+  const byId = new Map<string, GoogleEvent>();
+  for (const event of perCalendar.flat()) {
+    if (event.start?.dateTime && event.end?.dateTime) byId.set(event.id, event); // skip all-day events
+  }
+
+  return Array.from(byId.values()).map((e) => ({
+    id: e.id,
+    title: e.summary ?? "(no title)",
+    start: minutesInAppTZFromISO(e.start!.dateTime!),
+    end: minutesInAppTZFromISO(e.end!.dateTime!),
+    source: "google" as const,
+  }));
 }
 
 /**
