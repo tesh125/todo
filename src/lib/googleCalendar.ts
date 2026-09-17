@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { CalendarEvent } from "@/lib/timeBlocks";
+import { minutesInAppTZFromISO, minutesTodayToUTC } from "@/lib/timezone";
 
 const SCOPE = "https://www.googleapis.com/auth/calendar.events";
 const SINGLETON_ID = "singleton";
@@ -134,12 +135,6 @@ type GoogleEvent = {
   end?: { dateTime?: string; date?: string };
 };
 
-/** Minutes since midnight, in the server's local time. */
-function minutesFromISO(iso: string): number {
-  const d = new Date(iso);
-  return d.getHours() * 60 + d.getMinutes();
-}
-
 /**
  * Fetches today's events from the connected Google Calendar. Returns null if
  * no account is connected (caller should fall back to an empty calendar).
@@ -148,9 +143,8 @@ export async function getTodaysGoogleEvents(): Promise<CalendarEvent[] | null> {
   const accessToken = await getValidAccessToken();
   if (!accessToken) return null;
 
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const endOfDay = new Date(startOfDay.getTime() + 24 * 60 * 60 * 1000);
+  const startOfDay = minutesTodayToUTC(0);
+  const endOfDay = minutesTodayToUTC(24 * 60);
 
   const params = new URLSearchParams({
     timeMin: startOfDay.toISOString(),
@@ -172,8 +166,60 @@ export async function getTodaysGoogleEvents(): Promise<CalendarEvent[] | null> {
     .map((e) => ({
       id: e.id,
       title: e.summary ?? "(no title)",
-      start: minutesFromISO(e.start!.dateTime!),
-      end: minutesFromISO(e.end!.dateTime!),
+      start: minutesInAppTZFromISO(e.start!.dateTime!),
+      end: minutesInAppTZFromISO(e.end!.dateTime!),
       source: "google" as const,
     }));
+}
+
+/**
+ * Creates a real event on the connected Google Calendar for a task block
+ * placed on today's Time Blocks calendar. Returns the new event's id, or
+ * null if there's no connection or the request fails.
+ */
+export async function createGoogleEvent(title: string, startMinute: number, endMinute: number): Promise<string | null> {
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) return null;
+
+  const res = await fetch("https://www.googleapis.com/calendar/v3/calendars/primary/events", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      summary: title,
+      start: { dateTime: minutesTodayToUTC(startMinute).toISOString() },
+      end: { dateTime: minutesTodayToUTC(endMinute).toISOString() },
+    }),
+  });
+  if (!res.ok) return null;
+
+  const created = await res.json();
+  return created.id ?? null;
+}
+
+/**
+ * Writes any newly-placed task block to the connected Google Calendar as a
+ * real event. Skips blocks that aren't task-derived (real Google events,
+ * locked preferences) and tasks that already have a googleEventId, so this
+ * is safe to call on every page load.
+ */
+export async function syncTaskBlocksToGoogle(
+  blocks: CalendarEvent[],
+  tasks: { id: string; googleEventId: string | null }[]
+): Promise<void> {
+  const account = await getGoogleConnection();
+  if (!account) return;
+
+  const taskById = new Map(tasks.map((t) => [t.id, t]));
+
+  for (const block of blocks) {
+    if (block.source !== "ai" || !block.id.startsWith("ai-")) continue;
+    const taskId = block.id.slice(3);
+    const task = taskById.get(taskId);
+    if (!task || task.googleEventId) continue;
+
+    const eventId = await createGoogleEvent(block.title, block.start, block.end);
+    if (eventId) {
+      await prisma.task.update({ where: { id: taskId }, data: { googleEventId: eventId } });
+    }
+  }
 }

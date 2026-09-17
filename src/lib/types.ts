@@ -16,3 +16,8 @@ export type PreferenceDTO = {
   endMinute: number | null;
   order: number;
 };
+
+export type SettingsDTO = {
+  workStartMinute: number;
+  workEndMinute: number;
+};

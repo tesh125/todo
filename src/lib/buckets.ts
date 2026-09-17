@@ -1,9 +1,10 @@
-import { addDays, isBefore, isSameDay, startOfDay } from "date-fns";
+import { addDays } from "date-fns";
+import { todayMidnightUTC } from "@/lib/timezone";
 
 export type Bucket = "today" | "tomorrow" | "later";
 
 export function todayDate(): Date {
-  return startOfDay(new Date());
+  return todayMidnightUTC();
 }
 
 export function tomorrowDate(): Date {
@@ -12,19 +13,25 @@ export function tomorrowDate(): Date {
 
 /**
  * Derives which bucket a task belongs in purely from its stored date,
- * compared against the current date. This is what makes "tomorrow" items
- * move to "today" automatically at midnight: nothing has to move, the
- * bucket is just recomputed live every time the page loads. Anything with
- * a past date also surfaces under "today" so nothing silently falls off.
+ * compared against the current date (in APP_TIMEZONE — see lib/timezone.ts).
+ * This is what makes "tomorrow" items move to "today" automatically at
+ * midnight: nothing has to move, the bucket is just recomputed live every
+ * time the page loads. Anything with a past date also surfaces under
+ * "today" so nothing silently falls off.
+ *
+ * todayDate()/tomorrowDate() always return the exact same UTC instant for a
+ * given calendar day, so a direct timestamp comparison is enough here — no
+ * need for date-fns' isSameDay, which would reinterpret the calendar day
+ * using the server's own timezone instead of APP_TIMEZONE.
  */
 export function bucketForDate(date: Date | string | null): Bucket {
   if (!date) return "later";
-  const d = startOfDay(new Date(date));
-  const today = todayDate();
-  const tomorrow = tomorrowDate();
+  const d = new Date(date).getTime();
+  const today = todayDate().getTime();
+  const tomorrow = tomorrowDate().getTime();
 
-  if (isSameDay(d, today) || isBefore(d, today)) return "today";
-  if (isSameDay(d, tomorrow)) return "tomorrow";
+  if (d <= today) return "today";
+  if (d === tomorrow) return "tomorrow";
   return "later";
 }
 

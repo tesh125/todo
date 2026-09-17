@@ -2,7 +2,9 @@ import { prisma } from "@/lib/prisma";
 import { serializePreference, serializeTask } from "@/lib/serialize";
 import { bucketForDate } from "@/lib/buckets";
 import { lockedPreferenceEvents, suggestTimeBlocks } from "@/lib/timeBlocks";
-import { getGoogleConnection, getTodaysGoogleEvents } from "@/lib/googleCalendar";
+import { getGoogleConnection, getTodaysGoogleEvents, syncTaskBlocksToGoogle } from "@/lib/googleCalendar";
+import { getSettings } from "@/lib/settings";
+import { nowMinutesInAppTZ } from "@/lib/timezone";
 import TimeBlockCalendar from "@/components/TimeBlockCalendar";
 import GoogleConnect from "@/components/GoogleConnect";
 
@@ -15,11 +17,12 @@ export default async function CalendarPage({
 }) {
   const { google_error } = await searchParams;
 
-  const [tasks, preferences, googleAccount, googleEvents] = await Promise.all([
+  const [tasks, preferences, googleAccount, googleEvents, settings] = await Promise.all([
     prisma.task.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }] }),
     prisma.preference.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }] }),
     getGoogleConnection(),
     getTodaysGoogleEvents(),
+    getSettings(),
   ]);
   const todayTasks = tasks.map(serializeTask).filter((t) => bucketForDate(t.date) === "today");
   const preferenceDTOs = preferences.map(serializePreference);
@@ -27,7 +30,15 @@ export default async function CalendarPage({
 
   const preferenceBlocks = lockedPreferenceEvents(preferenceDTOs);
   const fixedEvents = [...(googleEvents ?? []), ...preferenceBlocks];
-  const aiEvents = suggestTimeBlocks(todayTasks, fixedEvents);
+  const aiEvents = suggestTimeBlocks(todayTasks, fixedEvents, {
+    workStart: settings.workStartMinute,
+    workEnd: settings.workEndMinute,
+    nowMinutes: nowMinutesInAppTZ(),
+  });
+
+  if (googleAccount) {
+    await syncTaskBlocksToGoogle(aiEvents, tasks);
+  }
 
   return (
     <div>

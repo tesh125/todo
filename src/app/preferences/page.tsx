@@ -1,13 +1,16 @@
 import { prisma } from "@/lib/prisma";
 import { serializePreference } from "@/lib/serialize";
+import { getSettings } from "@/lib/settings";
 import PreferencesBoard from "@/components/PreferencesBoard";
+import WorkdayHours from "@/components/WorkdayHours";
 
 export const dynamic = "force-dynamic";
 
 export default async function PreferencesPage() {
-  const preferences = await prisma.preference.findMany({
-    orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-  });
+  const [preferences, settings] = await Promise.all([
+    prisma.preference.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }] }),
+    getSettings(),
+  ]);
 
   return (
     <div>
@@ -18,6 +21,9 @@ export default async function PreferencesPage() {
           leave it open-ended so it&apos;s just context.
         </p>
       </header>
+      <div className="mx-auto max-w-2xl px-8 pt-8">
+        <WorkdayHours initialSettings={settings} />
+      </div>
       <PreferencesBoard initialPreferences={preferences.map(serializePreference)} />
     </div>
   );

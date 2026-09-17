@@ -26,6 +26,10 @@ model Task {
   order            Int       @default(0)
   // Rough duration estimate in minutes, used by the AI time-blocking suggestion.
   estimatedMinutes Int?
+  // Once this task lands on the Time Blocks calendar and Google Calendar is
+  // connected, it becomes a real event there — this is that event's id, so
+  // it's only ever created once instead of duplicated on every page load.
+  googleEventId    String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 }
@@ -40,6 +44,17 @@ model GoogleAccount {
   expiresAt    DateTime
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// Single row of app-wide settings. Personal single-user app, so there's
+// never more than one of these either.
+model Settings {
+  id              String   @id @default("singleton")
+  // Minutes since midnight. The scheduler never places a flexible task
+  // outside this window.
+  workStartMinute Int      @default(540) // 9:00
+  workEndMinute   Int      @default(1080) // 18:00
+  updatedAt       DateTime @updatedAt
 }
 
 model Preference {

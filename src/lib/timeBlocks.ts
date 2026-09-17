@@ -26,27 +26,77 @@ export function lockedPreferenceEvents(preferences: PreferenceDTO[]): CalendarEv
     }));
 }
 
-const WORK_START = 9 * 60; // 9:00
-const WORK_END = 18 * 60; // 18:00
+export const DEFAULT_WORK_START = 9 * 60; // 9:00
+export const DEFAULT_WORK_END = 18 * 60; // 18:00
 const DEFAULT_TASK_MINUTES = 30;
 
+const TIME_IN_TITLE = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i;
+
 /**
- * Placeholder for the real AI call: greedily drops today's open tasks into
- * the free gaps around existing calendar events, in bucket order. Replace
- * the scheduling logic here with a Claude API call once that's wired up —
- * the shape (CalendarEvent[]) stays the same either way.
+ * Pulls an explicit time out of a task title, e.g. "Interview 3pm" or
+ * "3:30 PM call" -> 210 (minutes since midnight). Returns null if the title
+ * doesn't mention a time. A task with an explicit time is treated as a
+ * fixed appointment: the scheduler places it exactly there instead of
+ * fitting it into the next open gap.
+ */
+export function parseExplicitTime(title: string): number | null {
+  const match = TIME_IN_TITLE.exec(title);
+  if (!match) return null;
+
+  let hour = Number(match[1]);
+  const minute = match[2] ? Number(match[2]) : 0;
+  const period = match[3].toLowerCase();
+  if (hour < 1 || hour > 12 || minute > 59) return null;
+
+  if (hour === 12) hour = 0;
+  if (period === "pm") hour += 12;
+
+  return hour * 60 + minute;
+}
+
+/**
+ * Placeholder for the real AI call: places any task with an explicit time
+ * (parsed from its title) exactly there, then greedily drops the remaining
+ * open tasks into the free gaps around existing events and those fixed
+ * appointments. Replace the scheduling logic here with a Claude API call
+ * once that's wired up — the shape (CalendarEvent[]) stays the same either
+ * way.
  */
 export function suggestTimeBlocks(
   todayTasks: TaskDTO[],
-  existingEvents: CalendarEvent[]
+  existingEvents: CalendarEvent[],
+  options?: { workStart?: number; workEnd?: number; nowMinutes?: number }
 ): CalendarEvent[] {
-  const busy = [...existingEvents].sort((a, b) => a.start - b.start);
-  const suggestions: CalendarEvent[] = [];
-
-  let cursor = WORK_START;
+  const workStart = options?.workStart ?? DEFAULT_WORK_START;
+  const workEnd = options?.workEnd ?? DEFAULT_WORK_END;
   const pending = todayTasks.filter((t) => !t.completed);
 
+  const explicitBlocks: CalendarEvent[] = [];
+  const flexibleTasks: TaskDTO[] = [];
   for (const task of pending) {
+    const explicitStart = parseExplicitTime(task.title);
+    if (explicitStart !== null) {
+      const duration = task.estimatedMinutes ?? DEFAULT_TASK_MINUTES;
+      explicitBlocks.push({
+        id: `ai-${task.id}`,
+        title: task.title,
+        start: explicitStart,
+        end: explicitStart + duration,
+        source: "ai",
+      });
+    } else {
+      flexibleTasks.push(task);
+    }
+  }
+
+  const busy = [...existingEvents, ...explicitBlocks].sort((a, b) => a.start - b.start);
+  const suggestions: CalendarEvent[] = [...explicitBlocks];
+
+  // Never suggest a flexible task earlier than right now — only meaningful
+  // for today, which is the only day this scheduler ever runs for.
+  let cursor = Math.max(workStart, options?.nowMinutes ?? workStart);
+
+  for (const task of flexibleTasks) {
     const duration = task.estimatedMinutes ?? DEFAULT_TASK_MINUTES;
 
     // Skip cursor past any event it currently overlaps.
@@ -56,7 +106,7 @@ export function suggestTimeBlocks(
       }
     }
 
-    if (cursor + duration > WORK_END) break;
+    if (cursor + duration > workEnd) break;
 
     const block: CalendarEvent = {
       id: `ai-${task.id}`,
@@ -95,5 +145,3 @@ export function timeInputValueToMinutes(value: string): number | null {
   if (!match) return null;
   return Number(match[1]) * 60 + Number(match[2]);
 }
-
-export { WORK_START, WORK_END };
