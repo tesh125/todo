@@ -38,6 +38,33 @@ broader `calendar` OAuth scope, which only takes effect on a fresh consent.
 
 See `src/lib/googleCalendar.ts` for the OAuth + Calendar API calls.
 
+## Importing from Apple Notes
+
+Apple doesn't have a public API for Notes, so there's no real sync — but
+`POST /api/import` accepts freeform text and creates tasks from it, which an
+Apple Shortcut can call. It expects "Today" / "Tomorrow" / "Later" section
+headers (matching a typical Apple Notes layout) followed by one task per
+line, bulleted or not; anything before the first header is filed under
+"Later". Re-running the same note is safe — a line whose text matches an
+existing open task is skipped rather than duplicated.
+
+Setup:
+
+1. Set `IMPORT_SECRET` to any random string (env var, both locally and on
+   Vercel). The endpoint is disabled entirely if it's unset.
+2. In the Shortcuts app, build a shortcut:
+   - **Find Notes** (or **Get Note**) → find your Today/Tomorrow/Later note
+     by name, and get its **Plain Text** content.
+   - **Get Contents of URL**: `POST` to
+     `https://todo-six-theta-99.vercel.app/api/import`
+     - Header `Authorization`: `Bearer <your IMPORT_SECRET>`
+     - Request body (JSON): `{ "text": <the note's plain text> }`
+3. Run the shortcut whenever you want to pull the note in — manually, from
+   the Shortcuts widget, or via a personal automation (e.g. every morning).
+
+See `src/lib/importNotes.ts` for the parser and `src/app/api/import/route.ts`
+for the endpoint.
+
 ## AI scheduling: still a stub
 
 `src/lib/timeBlocks.ts` → `suggestTimeBlocks()` is a simple greedy scheduling
