@@ -282,10 +282,54 @@ export async function getGoogleEventsForDay(offsetDays: number): Promise<Calenda
 }
 
 /**
+ * Looks for an event already sitting on the given calendar with the exact
+ * same title and time slot, so createGoogleEvent can adopt it instead of
+ * making a duplicate. Covers cases the googleEventId dedup alone wouldn't —
+ * e.g. the DB's googleEventId getting lost or reset, or two sync calls
+ * racing each other — by checking the live calendar itself, not just our
+ * own record of what we already did.
+ */
+async function findExistingEventId(
+  accessToken: string,
+  calendarId: string,
+  title: string,
+  startMinute: number,
+  endMinute: number,
+  offsetDays: number
+): Promise<string | null> {
+  const params = new URLSearchParams({
+    timeMin: minutesOnDayToUTC(offsetDays, startMinute).toISOString(),
+    timeMax: minutesOnDayToUTC(offsetDays, endMinute).toISOString(),
+    singleEvents: "true",
+    q: title,
+  });
+
+  const res = await fetch(
+    `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  if (!res.ok) return null;
+
+  const data = await res.json();
+  const items: GoogleEvent[] = data.items ?? [];
+
+  const match = items.find(
+    (e) =>
+      e.summary === title &&
+      e.start?.dateTime &&
+      e.end?.dateTime &&
+      minutesInAppTZFromISO(e.start.dateTime) === startMinute &&
+      minutesInAppTZFromISO(e.end.dateTime) === endMinute
+  );
+  return match?.id ?? null;
+}
+
+/**
  * Creates a real event on the connected Google Calendar for a task block
- * placed on the Time Blocks calendar. offsetDays: 0 = today, 1 = tomorrow,
- * etc. Returns the new event's id, or null if there's no connection or the
- * request fails.
+ * placed on the Time Blocks calendar — or, if one with the same title and
+ * time slot already exists there, returns that one instead of creating a
+ * duplicate. offsetDays: 0 = today, 1 = tomorrow, etc. Returns null if
+ * there's no connection or the request fails.
  */
 export async function createGoogleEvent(
   title: string,
@@ -298,6 +342,9 @@ export async function createGoogleEvent(
 
   const calendarId = await getOrCreateDedicatedCalendarId(accessToken);
   if (!calendarId) return null;
+
+  const existingId = await findExistingEventId(accessToken, calendarId, title, startMinute, endMinute, offsetDays);
+  if (existingId) return existingId;
 
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
