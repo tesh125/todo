@@ -77,6 +77,12 @@ break — instead of the flat keyword rules in `src/lib/timeBlocks.ts` →
 server-side against the busy list before being trusted, so a hallucinated
 or overlapping placement gets dropped rather than double-booked.
 
+Tasks with an explicit time in their title (e.g. "Interview 3pm") are
+already fixed on the calendar, so they skip the placement call — but they
+still get a real Sonnet duration estimate via the same file's
+`callDurationEstimateModel()`, rather than falling back to the keyword
+heuristic just because their slot is already decided.
+
 Requires `ANTHROPIC_API_KEY`. Without it — or if the API call fails for any
 reason — it falls back to the heuristic scheduler automatically, so the page
 never breaks either way.

@@ -1,8 +1,9 @@
 // Keyword heuristic for how long a task probably takes when the user hasn't
-// set an estimatedMinutes themselves — not a real AI estimate (see
-// suggestTimeBlocks in timeBlocks.ts, and the README's "AI scheduling: still
-// a stub" note). Checked in order, first match wins, so put more specific
-// phrasing before the broader category it'd otherwise fall into.
+// set an estimatedMinutes themselves. This is the fallback used when there's
+// no Sonnet call to lean on — suggestTimeBlocks() in timeBlocks.ts (no API
+// key configured), and suggestTimeBlocksWithAI() in aiScheduler.ts if the API
+// call itself fails. Checked in order, first match wins, so put more
+// specific phrasing before the broader category it'd otherwise fall into.
 const RULES: { pattern: RegExp; minutes: number }[] = [
   // Quick actions — a couple minutes of actual doing, a slot just to not lose it
   { pattern: /\b(email|text|message|dm|ping|call|reply|respond|follow[\s-]?up)\b/i, minutes: 15 },

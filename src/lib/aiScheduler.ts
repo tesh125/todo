@@ -34,6 +34,19 @@ const ScheduleResponseSchema = z.object({
   breaks: z.array(ScheduledBreakSchema),
 });
 
+const DurationEstimateSchema = z.object({
+  taskId: z.string().describe("Must exactly match one of the given task ids — never invent one"),
+  minutes: z.number().int().min(5).max(240).describe("Estimated realistic duration in minutes"),
+});
+
+const DurationEstimateResponseSchema = z.object({
+  estimates: z.array(DurationEstimateSchema),
+});
+
+const DURATION_SYSTEM_PROMPT = `Estimate a realistic duration in minutes for each task below, based on what it actually involves — a quick call/email/text is short (10-20 min), focused admin/editing work is short-medium (20-40 min), writing or creative work is medium (30-60 min), and deep, complex, or research-heavy work is long (60-120+ min).
+
+Respond only via the schedule tool/schema. Every taskId you return must exactly match one of the ids given to you.`;
+
 const SYSTEM_PROMPT = `You are a scheduling assistant for a personal daily planner. Given a list of open tasks and the events already on the calendar, place each task into a specific time slot for the day.
 
 Rules:
@@ -88,6 +101,31 @@ async function callSchedulingModel(
   return response.parsed_output;
 }
 
+/**
+ * Duration-only counterpart to callSchedulingModel(), for tasks whose
+ * placement is already fixed (an explicit time parsed from the title) and
+ * just need a realistic length — asking the full scheduling model to also
+ * place these would be redundant since they don't move.
+ */
+async function callDurationEstimateModel(tasks: TaskDTO[]): Promise<Map<string, number>> {
+  const client = new Anthropic();
+
+  const userContent = JSON.stringify({
+    tasks: tasks.map((t) => ({ id: t.id, title: t.title, notes: t.notes ?? undefined })),
+  });
+
+  const response = await client.messages.parse({
+    model: "claude-sonnet-5",
+    max_tokens: 2000,
+    system: DURATION_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: userContent }],
+    output_config: { format: zodOutputFormat(DurationEstimateResponseSchema) },
+  });
+
+  if (!response.parsed_output) throw new Error("AI duration estimate returned no parseable output");
+  return new Map(response.parsed_output.estimates.map((e) => [e.taskId, e.minutes]));
+}
+
 function overlaps(a: { start: number; end: number }, b: { start: number; end: number }): boolean {
   return a.start < b.end && a.end > b.start;
 }
@@ -96,12 +134,15 @@ function overlaps(a: { start: number; end: number }, b: { start: number; end: nu
  * Real "brain" behind the scheduler: sends today's (or tomorrow's) open
  * tasks, what's already busy, and the user's freeform preferences to Claude,
  * and asks it to reason about realistic durations, spacing, and breaks
- * instead of the flat keyword heuristic in suggestTimeBlocks(). Falls back
- * to that heuristic whenever there's no API key, nothing to schedule, or the
- * API call fails for any reason — this must never be the thing that breaks
- * the Time Blocks page. Every block the model returns is re-validated
- * against the busy list server-side before being trusted, so a
- * hallucinated or overlapping placement is dropped rather than double-booked.
+ * instead of the flat keyword heuristic in suggestTimeBlocks(). Tasks with
+ * an explicit time in their title skip placement (they're already fixed)
+ * but still get a Sonnet duration estimate via callDurationEstimateModel().
+ * Falls back to the keyword heuristic whenever there's no API key, nothing
+ * to schedule, or an API call fails for any reason — this must never be the
+ * thing that breaks the Time Blocks page. Every block the scheduling model
+ * returns is re-validated against the busy list server-side before being
+ * trusted, so a hallucinated or overlapping placement is dropped rather
+ * than double-booked.
  */
 export async function suggestTimeBlocksWithAI(
   dayTasks: TaskDTO[],
@@ -118,23 +159,41 @@ export async function suggestTimeBlocksWithAI(
   const pending = dayTasks.filter((t) => !t.completed);
   if (pending.length === 0) return [];
 
-  const explicitBlocks: CalendarEvent[] = [];
+  const explicitTasks: { task: TaskDTO; start: number }[] = [];
   const flexibleTasks: TaskDTO[] = [];
   for (const task of pending) {
     const explicitStart = parseExplicitTime(task.title);
     if (explicitStart !== null) {
-      const duration = task.estimatedMinutes ?? estimateTaskDuration(task.title);
-      explicitBlocks.push({
-        id: `ai-${task.id}`,
-        title: task.title,
-        start: explicitStart,
-        end: explicitStart + duration,
-        source: "ai",
-      });
+      explicitTasks.push({ task, start: explicitStart });
     } else {
       flexibleTasks.push(task);
     }
   }
+
+  // Explicit-time tasks don't need the model to place them, just to size
+  // them — so give Sonnet a shot at a real duration estimate here too,
+  // instead of always falling back to the keyword heuristic the way the
+  // non-AI scheduler does.
+  const needsDuration = explicitTasks.filter(({ task }) => task.estimatedMinutes == null);
+  let aiDurations = new Map<string, number>();
+  if (needsDuration.length > 0) {
+    try {
+      aiDurations = await callDurationEstimateModel(needsDuration.map(({ task }) => task));
+    } catch (err) {
+      console.error("AI duration estimate failed, falling back to the keyword heuristic:", err);
+    }
+  }
+
+  const explicitBlocks: CalendarEvent[] = explicitTasks.map(({ task, start }) => {
+    const duration = task.estimatedMinutes ?? aiDurations.get(task.id) ?? estimateTaskDuration(task.title);
+    return {
+      id: `ai-${task.id}`,
+      title: task.title,
+      start,
+      end: start + duration,
+      source: "ai",
+    };
+  });
 
   if (flexibleTasks.length === 0) return explicitBlocks;
 
