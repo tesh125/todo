@@ -2,7 +2,8 @@ import type { GoogleAccount, Task } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializePreference, serializeTask } from "@/lib/serialize";
 import { Bucket, bucketForDate } from "@/lib/buckets";
-import { CalendarEvent, lockedPreferenceEvents, placeWindowedPreferences, suggestTimeBlocks } from "@/lib/timeBlocks";
+import { CalendarEvent, lockedPreferenceEvents, placeWindowedPreferences } from "@/lib/timeBlocks";
+import { suggestTimeBlocksWithAI } from "@/lib/aiScheduler";
 import {
   getGoogleConnection,
   getGoogleEventsForDay,
@@ -38,6 +39,7 @@ async function buildDayView({
   rawTasks,
   preferenceDTOs,
   rawPreferences,
+  freeformContext,
   settings,
   googleAccount,
   nowMinutes,
@@ -48,6 +50,7 @@ async function buildDayView({
   rawTasks: Pick<Task, "id" | "googleEventId">[];
   preferenceDTOs: PreferenceDTO[];
   rawPreferences: { id: string; googleEventId: string | null; googleEventDate: string | null }[];
+  freeformContext: string[];
   settings: SettingsDTO;
   googleAccount: GoogleAccount | null;
   nowMinutes?: number;
@@ -70,10 +73,11 @@ async function buildDayView({
   const preferenceBlocks = lockedPreferenceEvents(preferenceDTOs);
   const windowedBlocks = placeWindowedPreferences(preferenceDTOs, [...realGoogleEvents, ...preferenceBlocks]);
   const fixedEvents = [...realGoogleEvents, ...preferenceBlocks, ...windowedBlocks];
-  const aiEvents = suggestTimeBlocks(dayTasks, fixedEvents, {
+  const aiEvents = await suggestTimeBlocksWithAI(dayTasks, fixedEvents, {
     workStart: settings.workStartMinute,
     workEnd: settings.workEndMinute,
     nowMinutes,
+    freeformContext,
   });
 
   let syncedIds = new Set<string>();
@@ -110,6 +114,8 @@ export default async function CalendarPage({
   // Sequential, not Promise.all: if the dedicated calendar doesn't exist yet,
   // both days' syncs would otherwise race to create it concurrently and
   // could end up creating two.
+  const freeformContext = freeformPreferences.map((p) => p.text);
+
   const today = await buildDayView({
     offsetDays: 0,
     bucket: "today",
@@ -117,6 +123,7 @@ export default async function CalendarPage({
     rawTasks: tasks,
     preferenceDTOs,
     rawPreferences: preferences,
+    freeformContext,
     settings,
     googleAccount,
     nowMinutes: nowMinutesInAppTZ(),
@@ -128,6 +135,7 @@ export default async function CalendarPage({
     rawTasks: tasks,
     preferenceDTOs,
     rawPreferences: preferences,
+    freeformContext,
     settings,
     googleAccount,
     // No nowMinutes: tomorrow's flexible tasks can start anywhere from the
