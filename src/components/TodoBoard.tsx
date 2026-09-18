@@ -2,8 +2,10 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import { Bucket, bucketForDate, dateForBucket } from "@/lib/buckets";
-import { TaskDTO } from "@/lib/types";
+import { PreferenceDTO, TaskDTO } from "@/lib/types";
 import TaskCard from "@/components/TaskCard";
+import DailyItemCard from "@/components/DailyItemCard";
+import Confetti from "@/components/Confetti";
 
 const COLUMNS: { bucket: Bucket; title: string; hint: string; colorVar: string }[] = [
   { bucket: "today", title: "Today", hint: "What's on deck right now", colorVar: "var(--today)" },
@@ -11,14 +13,23 @@ const COLUMNS: { bucket: Bucket; title: string; hint: string; colorVar: string }
   { bucket: "later", title: "Later", hint: "Someday / backlog", colorVar: "var(--later)" },
 ];
 
-export default function TodoBoard({ initialTasks }: { initialTasks: TaskDTO[] }) {
+export default function TodoBoard({
+  initialTasks,
+  initialDaily,
+}: {
+  initialTasks: TaskDTO[];
+  initialDaily: PreferenceDTO[];
+}) {
   const [tasks, setTasks] = useState<TaskDTO[]>(initialTasks);
+  const [daily, setDaily] = useState<PreferenceDTO[]>(initialDaily);
   const [draftByBucket, setDraftByBucket] = useState<Record<Bucket, string>>({
     today: "",
     tomorrow: "",
     later: "",
   });
   const [dragOverBucket, setDragOverBucket] = useState<Bucket | null>(null);
+  const [confettiKey, setConfettiKey] = useState(0);
+  const [showConfetti, setShowConfetti] = useState(false);
 
   const grouped = useMemo(() => {
     const byBucket: Record<Bucket, TaskDTO[]> = { today: [], tomorrow: [], later: [] };
@@ -27,6 +38,20 @@ export default function TodoBoard({ initialTasks }: { initialTasks: TaskDTO[] })
     }
     return byBucket;
   }, [tasks]);
+
+  // Celebrates finishing everything actually due today — Today's tasks plus
+  // the Daily non-negotiables — not Tomorrow/Later, which aren't due yet.
+  function celebrateIfAllDone(nextTasks: TaskDTO[], nextDaily: PreferenceDTO[]) {
+    const todayItems = nextTasks.filter((t) => bucketForDate(t.date) === "today");
+    const total = todayItems.length + nextDaily.length;
+    if (total === 0) return;
+    const allDone = todayItems.every((t) => t.completed) && nextDaily.every((p) => p.completedToday);
+    if (!allDone) return;
+
+    setConfettiKey((k) => k + 1);
+    setShowConfetti(true);
+    window.setTimeout(() => setShowConfetti(false), 2700);
+  }
 
   async function addTask(bucket: Bucket, e: FormEvent) {
     e.preventDefault();
@@ -44,11 +69,24 @@ export default function TodoBoard({ initialTasks }: { initialTasks: TaskDTO[] })
   }
 
   async function toggleTask(task: TaskDTO) {
-    setTasks((t) => t.map((x) => (x.id === task.id ? { ...x, completed: !x.completed } : x)));
+    const next = tasks.map((x) => (x.id === task.id ? { ...x, completed: !x.completed } : x));
+    setTasks(next);
+    celebrateIfAllDone(next, daily);
     await fetch(`/api/tasks/${task.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ completed: !task.completed }),
+    });
+  }
+
+  async function toggleDaily(preference: PreferenceDTO) {
+    const next = daily.map((p) => (p.id === preference.id ? { ...p, completedToday: !p.completedToday } : p));
+    setDaily(next);
+    celebrateIfAllDone(tasks, next);
+    await fetch(`/api/preferences/${preference.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ completedToday: !preference.completedToday }),
     });
   }
 
@@ -72,7 +110,8 @@ export default function TodoBoard({ initialTasks }: { initialTasks: TaskDTO[] })
   }
 
   return (
-    <div className="mx-auto grid max-w-6xl grid-cols-1 gap-5 p-8 md:grid-cols-3">
+    <div className="mx-auto grid max-w-7xl grid-cols-1 gap-5 p-4 sm:grid-cols-2 sm:p-8 xl:grid-cols-4">
+      {showConfetti && <Confetti key={confettiKey} />}
       {COLUMNS.map((col) => {
         const items = grouped[col.bucket];
         const isDragOver = dragOverBucket === col.bucket;
@@ -123,6 +162,30 @@ export default function TodoBoard({ initialTasks }: { initialTasks: TaskDTO[] })
           </div>
         );
       })}
+
+      <div className="flex flex-col rounded-2xl border border-border bg-surface p-4">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: "var(--preference)" }} />
+          <h2 className="text-[15px] font-semibold">Daily</h2>
+          <span className="ml-auto text-xs font-medium text-muted">{daily.length}</span>
+        </div>
+        <p className="mb-4 text-xs text-muted">Non-negotiables, every day</p>
+
+        <div className="flex flex-1 flex-col gap-2">
+          {daily.length === 0 && (
+            <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-muted">
+              No non-negotiables yet. Add some on the{" "}
+              <a href="/preferences" className="text-accent underline">
+                Preferences
+              </a>{" "}
+              page.
+            </p>
+          )}
+          {daily.map((preference) => (
+            <DailyItemCard key={preference.id} preference={preference} onToggle={toggleDaily} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

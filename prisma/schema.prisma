@@ -95,6 +95,12 @@ model Preference {
   // day rather than reusing this one.
   googleEventId     String?
   googleEventDate   String?
+  // Non-negotiables (locked or windowed) show up in the Today board's Daily
+  // column and can be checked off like a task. Recurs every day, so this
+  // just holds the day it was last marked done for — compared against
+  // "today" the same way googleEventDate is, it resets itself each new day
+  // with no cron needed.
+  completedDate String?
   order       Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

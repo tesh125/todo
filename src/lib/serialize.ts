@@ -1,5 +1,6 @@
 import type { Task, Preference } from "@prisma/client";
 import { PreferenceDTO, TaskDTO } from "@/lib/types";
+import { todayKeyInAppTZ } from "@/lib/timezone";
 
 export function serializeTask(task: Task): TaskDTO {
   return {
@@ -24,6 +25,7 @@ export function serializePreference(pref: Preference): PreferenceDTO {
     durationMinutes: pref.durationMinutes,
     windowStartMinute: pref.windowStartMinute,
     windowEndMinute: pref.windowEndMinute,
+    completedToday: pref.completedDate === todayKeyInAppTZ(),
     order: pref.order,
   };
 }

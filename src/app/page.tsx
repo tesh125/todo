@@ -1,13 +1,17 @@
 import { prisma } from "@/lib/prisma";
-import { serializeTask } from "@/lib/serialize";
+import { serializePreference, serializeTask } from "@/lib/serialize";
 import TodoBoard from "@/components/TodoBoard";
 
 export const dynamic = "force-dynamic";
 
 export default async function TodoPage() {
-  const tasks = await prisma.task.findMany({
-    orderBy: [{ order: "asc" }, { createdAt: "asc" }],
-  });
+  const [tasks, preferences] = await Promise.all([
+    prisma.task.findMany({ orderBy: [{ order: "asc" }, { createdAt: "asc" }] }),
+    prisma.preference.findMany({
+      where: { OR: [{ locked: true }, { windowed: true }] },
+      orderBy: [{ order: "asc" }, { createdAt: "asc" }],
+    }),
+  ]);
 
   return (
     <div>
@@ -17,7 +21,7 @@ export default async function TodoPage() {
           Anything left in Tomorrow moves itself into Today the moment the day turns over.
         </p>
       </header>
-      <TodoBoard initialTasks={tasks.map(serializeTask)} />
+      <TodoBoard initialTasks={tasks.map(serializeTask)} initialDaily={preferences.map(serializePreference)} />
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { todayKeyInAppTZ } from "@/lib/timezone";
 
 export async function PATCH(
   req: NextRequest,
@@ -17,6 +18,7 @@ export async function PATCH(
     durationMinutes?: number | null;
     windowStartMinute?: number | null;
     windowEndMinute?: number | null;
+    completedDate?: string | null;
     order?: number;
   } = {};
 
@@ -41,6 +43,7 @@ export async function PATCH(
   if (typeof body.durationMinutes === "number" || body.durationMinutes === null) data.durationMinutes = body.durationMinutes;
   if (typeof body.windowStartMinute === "number" || body.windowStartMinute === null) data.windowStartMinute = body.windowStartMinute;
   if (typeof body.windowEndMinute === "number" || body.windowEndMinute === null) data.windowEndMinute = body.windowEndMinute;
+  if (typeof body.completedToday === "boolean") data.completedDate = body.completedToday ? todayKeyInAppTZ() : null;
   if (typeof body.order === "number") data.order = body.order;
 
   const preference = await prisma.preference.update({ where: { id }, data });
