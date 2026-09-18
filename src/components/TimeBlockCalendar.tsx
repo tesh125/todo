@@ -31,6 +31,7 @@ function EventBlock({ event, dayStart, synced }: { event: CalendarEvent; dayStar
   const height = (event.end - event.start) * PX_PER_MIN;
   const isAi = event.source === "ai";
   const isPreference = event.source === "preference";
+  const isBreak = event.source === "break";
   const showTime = height >= 34;
 
   return (
@@ -40,7 +41,9 @@ function EventBlock({ event, dayStart, synced }: { event: CalendarEvent; dayStar
           ? "border-dashed border-accent bg-accent-soft text-accent"
           : isPreference
             ? "border-preference bg-preference-soft text-foreground"
-            : "border-border bg-surface text-foreground shadow-sm"
+            : isBreak
+              ? "border-dashed border-muted bg-background text-muted"
+              : "border-border bg-surface text-foreground shadow-sm"
       }`}
       style={{ top, height: Math.max(height, 17) }}
     >
@@ -56,6 +59,11 @@ function EventBlock({ event, dayStart, synced }: { event: CalendarEvent; dayStar
             style={{ backgroundColor: "var(--preference)" }}
           >
             Fixed
+          </span>
+        )}
+        {isBreak && (
+          <span className="rounded-full bg-muted px-1.5 py-[1px] text-[9.5px] font-semibold uppercase tracking-wide text-surface">
+            Break
           </span>
         )}
         <span className="min-w-0 flex-1 truncate font-medium">{event.title}</span>
