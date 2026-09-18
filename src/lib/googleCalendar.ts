@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { CalendarEvent } from "@/lib/timeBlocks";
-import { minutesInAppTZFromISO, minutesTodayToUTC, todayKeyInAppTZ } from "@/lib/timezone";
+import { dayKeyInAppTZ, dayMidnightUTC, minutesInAppTZFromISO, minutesOnDayToUTC } from "@/lib/timezone";
 
 // Needs the full "calendar" scope (not just calendar.events) because
 // creating the dedicated "Todo Blocker" calendar itself requires
@@ -166,7 +166,7 @@ async function createCalendarOnGoogle(accessToken: string, name: string): Promis
  * existing one by id if already known (whether auto-created or explicitly
  * picked by the user), otherwise creates a new "Todo Blocker" calendar and
  * caches the id. The main calendar is still read separately
- * (getTodaysGoogleEvents) to know what's busy.
+ * (getGoogleEventsForDay) to know what's busy.
  */
 async function getOrCreateDedicatedCalendarId(accessToken: string): Promise<string | null> {
   const account = await prisma.googleAccount.findUnique({ where: { id: SINGLETON_ID } });
@@ -231,17 +231,18 @@ async function listAllCalendarIds(accessToken: string): Promise<string[]> {
 }
 
 /**
- * Fetches today's events across *every* calendar the user has (not just the
+ * Fetches a day's events across *every* calendar the user has (not just the
  * main one), so the Time Blocks view is a true picture of the day instead of
- * missing anything living on a secondary calendar. Returns null if no
- * account is connected (caller should fall back to an empty calendar).
+ * missing anything living on a secondary calendar. offsetDays: 0 = today,
+ * 1 = tomorrow, etc. Returns null if no account is connected (caller should
+ * fall back to an empty calendar).
  */
-export async function getTodaysGoogleEvents(): Promise<CalendarEvent[] | null> {
+export async function getGoogleEventsForDay(offsetDays: number): Promise<CalendarEvent[] | null> {
   const accessToken = await getValidAccessToken();
   if (!accessToken) return null;
 
-  const startOfDay = minutesTodayToUTC(0);
-  const endOfDay = minutesTodayToUTC(24 * 60);
+  const startOfDay = dayMidnightUTC(offsetDays);
+  const endOfDay = minutesOnDayToUTC(offsetDays, 24 * 60);
 
   const params = new URLSearchParams({
     timeMin: startOfDay.toISOString(),
@@ -282,10 +283,16 @@ export async function getTodaysGoogleEvents(): Promise<CalendarEvent[] | null> {
 
 /**
  * Creates a real event on the connected Google Calendar for a task block
- * placed on today's Time Blocks calendar. Returns the new event's id, or
- * null if there's no connection or the request fails.
+ * placed on the Time Blocks calendar. offsetDays: 0 = today, 1 = tomorrow,
+ * etc. Returns the new event's id, or null if there's no connection or the
+ * request fails.
  */
-export async function createGoogleEvent(title: string, startMinute: number, endMinute: number): Promise<string | null> {
+export async function createGoogleEvent(
+  title: string,
+  startMinute: number,
+  endMinute: number,
+  offsetDays: number = 0
+): Promise<string | null> {
   const accessToken = await getValidAccessToken();
   if (!accessToken) return null;
 
@@ -299,8 +306,8 @@ export async function createGoogleEvent(title: string, startMinute: number, endM
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         summary: title,
-        start: { dateTime: minutesTodayToUTC(startMinute).toISOString() },
-        end: { dateTime: minutesTodayToUTC(endMinute).toISOString() },
+        start: { dateTime: minutesOnDayToUTC(offsetDays, startMinute).toISOString() },
+        end: { dateTime: minutesOnDayToUTC(offsetDays, endMinute).toISOString() },
       }),
     }
   );
@@ -312,15 +319,19 @@ export async function createGoogleEvent(title: string, startMinute: number, endM
 
 /**
  * Writes any newly-placed task block to the connected Google Calendar as a
- * real event. Skips blocks that aren't task-derived (real Google events,
- * locked preferences) and tasks that already have a googleEventId, so this
- * is safe to call on every page load. Returns the ids of every task that
- * ends up with an event on Google (whether just-created or already synced),
- * so the UI can show which blocks are actually on the calendar.
+ * real event. offsetDays: 0 = today, 1 = tomorrow, etc — a task only ever
+ * gets synced once regardless of which day it was scheduled under, so this
+ * is safe to call for both today's and tomorrow's blocks on the same page
+ * load without double-booking. Skips blocks that aren't task-derived (real
+ * Google events, locked preferences) and tasks that already have a
+ * googleEventId. Returns the ids of every task that ends up with an event on
+ * Google (whether just-created or already synced), so the UI can show which
+ * blocks are actually on the calendar.
  */
 export async function syncTaskBlocksToGoogle(
   blocks: CalendarEvent[],
-  tasks: { id: string; googleEventId: string | null }[]
+  tasks: { id: string; googleEventId: string | null }[],
+  offsetDays: number = 0
 ): Promise<Set<string>> {
   const synced = new Set<string>();
   const account = await getGoogleConnection();
@@ -339,7 +350,7 @@ export async function syncTaskBlocksToGoogle(
       continue;
     }
 
-    const eventId = await createGoogleEvent(block.title, block.start, block.end);
+    const eventId = await createGoogleEvent(block.title, block.start, block.end, offsetDays);
     if (eventId) {
       await prisma.task.update({ where: { id: taskId }, data: { googleEventId: eventId } });
       synced.add(taskId);
@@ -365,7 +376,7 @@ export async function syncPreferenceBlocksToGoogle(
   const account = await getGoogleConnection();
   if (!account) return synced;
 
-  const today = todayKeyInAppTZ();
+  const today = dayKeyInAppTZ(0);
   const prefById = new Map(preferences.map((p) => [p.id, p]));
 
   for (const block of blocks) {

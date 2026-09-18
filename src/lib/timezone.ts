@@ -1,3 +1,4 @@
+import { addDays } from "date-fns";
 import { fromZonedTime, toZonedTime } from "date-fns-tz";
 
 // Single-user personal app: the timezone is fixed here rather than detected
@@ -37,4 +38,28 @@ export function minutesTodayToUTC(minutes: number): Date {
 export function minutesInAppTZFromISO(iso: string): number {
   const zoned = toZonedTime(new Date(iso), APP_TIMEZONE);
   return zoned.getHours() * 60 + zoned.getMinutes();
+}
+
+/** Same as todayKeyInAppTZ(), but for any day offset from today (0 = today, 1 = tomorrow, ...). */
+export function dayKeyInAppTZ(offsetDays: number): string {
+  if (offsetDays === 0) return todayKeyInAppTZ();
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(addDays(new Date(), offsetDays));
+}
+
+/** Same as todayMidnightUTC(), but for any day offset from today. */
+export function dayMidnightUTC(offsetDays: number): Date {
+  return fromZonedTime(`${dayKeyInAppTZ(offsetDays)} 00:00:00`, APP_TIMEZONE);
+}
+
+/** Same as minutesTodayToUTC(), but for any day offset from today. */
+export function minutesOnDayToUTC(offsetDays: number, minutes: number): Date {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  const wall = `${dayKeyInAppTZ(offsetDays)} ${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00`;
+  return fromZonedTime(wall, APP_TIMEZONE);
 }

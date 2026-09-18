@@ -107,13 +107,13 @@ export function parseExplicitTime(title: string): number | null {
  * way.
  */
 export function suggestTimeBlocks(
-  todayTasks: TaskDTO[],
+  dayTasks: TaskDTO[],
   existingEvents: CalendarEvent[],
   options?: { workStart?: number; workEnd?: number; nowMinutes?: number }
 ): CalendarEvent[] {
   const workStart = options?.workStart ?? DEFAULT_WORK_START;
   const workEnd = options?.workEnd ?? DEFAULT_WORK_END;
-  const pending = todayTasks.filter((t) => !t.completed);
+  const pending = dayTasks.filter((t) => !t.completed);
 
   const explicitBlocks: CalendarEvent[] = [];
   const flexibleTasks: TaskDTO[] = [];
@@ -136,8 +136,9 @@ export function suggestTimeBlocks(
   const busy = [...existingEvents, ...explicitBlocks].sort((a, b) => a.start - b.start);
   const suggestions: CalendarEvent[] = [...explicitBlocks];
 
-  // Never suggest a flexible task earlier than right now — only meaningful
-  // for today, which is the only day this scheduler ever runs for.
+  // Never suggest a flexible task earlier than right now. Only meaningful
+  // for today — omit nowMinutes when scheduling a future day, since the
+  // whole day is still open.
   let cursor = Math.max(workStart, options?.nowMinutes ?? workStart);
 
   for (const task of flexibleTasks) {
