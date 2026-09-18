@@ -77,7 +77,7 @@ async function callSchedulingModel(
   });
 
   const response = await client.messages.parse({
-    model: "claude-opus-5",
+    model: "claude-sonnet-5",
     max_tokens: 8000,
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userContent }],

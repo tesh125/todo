@@ -70,7 +70,7 @@ for the endpoint.
 `src/lib/aiScheduler.ts` → `suggestTimeBlocksWithAI()` sends the day's open
 tasks, what's already busy (real events + locked/windowed preferences +
 explicit-time tasks), and your freeform preference text to Claude
-(`claude-opus-5`, structured outputs), and asks it to reason about a
+(`claude-sonnet-5`, structured outputs), and asks it to reason about a
 realistic duration per task, sensible spacing, and where to drop in a walk
 break — instead of the flat keyword rules in `src/lib/timeBlocks.ts` →
 `suggestTimeBlocks()`. Every block the model proposes is re-validated
