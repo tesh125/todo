@@ -74,12 +74,12 @@ export function placeWindowedPreferences(preferences: PreferenceDTO[], busyEvent
 export const DEFAULT_WORK_START = 9 * 60; // 9:00
 export const DEFAULT_WORK_END = 18 * 60; // 18:00
 
-// After this much continuous flexible-task work, drop in a short walk break
-// before the next one, so deep-work sessions don't run back-to-back all day.
+// After this much continuous flexible-task work, drop in a walk break before
+// the next one, so deep-work sessions don't run back-to-back all day.
 // "Continuous" only counts flexible tasks placed by this scheduler — it
 // doesn't try to reason about whether a pre-existing meeting was restful.
-const BREAK_AFTER_MINUTES = 150; // 2.5h, the middle of "every 2-3 hours"
-const BREAK_MINUTES = 15;
+const BREAK_AFTER_MINUTES = 180; // 3h
+const BREAK_MINUTES = 30;
 
 const TIME_IN_TITLE = /\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b/i;
 

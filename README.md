@@ -67,21 +67,33 @@ for the endpoint.
 
 ## AI scheduling
 
-`src/lib/aiScheduler.ts` → `suggestTimeBlocksWithAI()` sends the day's open
+`src/lib/aiScheduler.ts` → `suggestTimeBlocksWithAI()` sends **today's** open
 tasks, what's already busy (real events + locked/windowed preferences +
 explicit-time tasks), and your freeform preference text to Claude
 (`claude-sonnet-5`, structured outputs), and asks it to reason about a
-realistic duration per task, sensible spacing, and where to drop in a walk
-break — instead of the flat keyword rules in `src/lib/timeBlocks.ts` →
-`suggestTimeBlocks()`. Every block the model proposes is re-validated
-server-side against the busy list before being trusted, so a hallucinated
-or overlapping placement gets dropped rather than double-booked.
+realistic duration per task, sensible spacing, grouping similar tasks
+back-to-back, and where to drop in a walk break — instead of the flat
+keyword rules in `src/lib/timeBlocks.ts` → `suggestTimeBlocks()`. Every block
+the model proposes is re-validated server-side against the busy list before
+being trusted, so a hallucinated or overlapping placement gets dropped
+rather than double-booked.
+
+Only today gets a live Sonnet call. Tomorrow's tab always uses the plain
+keyword heuristic instead — it's just a preview until the day rolls over,
+so there's no reason to spend a model call re-deriving it on every page
+load. See `buildDayView()` in `src/app/calendar/page.tsx`.
 
 Tasks with an explicit time in their title (e.g. "Interview 3pm") are
 already fixed on the calendar, so they skip the placement call — but they
 still get a real Sonnet duration estimate via the same file's
 `callDurationEstimateModel()`, rather than falling back to the keyword
-heuristic just because their slot is already decided.
+heuristic just because their slot is already decided. Whenever Sonnet comes
+up with a duration for a task that didn't already have one, it gets saved
+back onto the task itself (`estimatedMinutes`), so it shows up on the todo
+board too, not just today's calendar.
+
+After roughly 3 hours of continuous deep-focus work, the scheduler (AI or
+heuristic) inserts a 30 minute walk break before the next task.
 
 Requires `ANTHROPIC_API_KEY`. Without it — or if the API call fails for any
 reason — it falls back to the heuristic scheduler automatically, so the page

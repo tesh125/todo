@@ -2,7 +2,7 @@ import type { GoogleAccount, Task } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { serializePreference, serializeTask } from "@/lib/serialize";
 import { Bucket, bucketForDate } from "@/lib/buckets";
-import { CalendarEvent, lockedPreferenceEvents, placeWindowedPreferences } from "@/lib/timeBlocks";
+import { CalendarEvent, lockedPreferenceEvents, placeWindowedPreferences, suggestTimeBlocks } from "@/lib/timeBlocks";
 import { suggestTimeBlocksWithAI } from "@/lib/aiScheduler";
 import {
   getGoogleConnection,
@@ -23,14 +23,20 @@ export const dynamic = "force-dynamic";
 /**
  * Builds one day's worth of the Time Blocks view — real Google events for
  * that day (minus anything the app already synced there itself), locked +
- * windowed non-negotiables, and AI-suggested task blocks — then, if
- * connected, writes any newly-placed task block to Google. A task only ever
- * gets synced once regardless of which day it was scheduled under, so
- * syncing both today's and tomorrow's task blocks is safe. Preferences only
- * ever get synced to Google for *today* specifically (that's the dedup key
+ * windowed non-negotiables, and task blocks — then, if connected, writes any
+ * newly-placed task block to Google. A task only ever gets synced once
+ * regardless of which day it was scheduled under, so syncing both today's
+ * and tomorrow's task blocks is safe. Preferences only ever get synced to
+ * Google for *today* specifically (that's the dedup key
  * syncPreferenceBlocksToGoogle uses), so a tomorrow non-negotiable shown
  * here is a preview of where it'll land, not yet a real event — it becomes
  * one automatically once that day arrives and the page is next loaded.
+ *
+ * Only today (offsetDays 0) actually gets scheduled by Sonnet — tomorrow's
+ * task blocks come from the plain keyword heuristic instead. Tomorrow's plan
+ * is just a preview that gets rebuilt from scratch once it rolls over into
+ * today anyway, so spending a real model call on it every page load isn't
+ * worth it.
  */
 async function buildDayView({
   offsetDays,
@@ -73,12 +79,19 @@ async function buildDayView({
   const preferenceBlocks = lockedPreferenceEvents(preferenceDTOs);
   const windowedBlocks = placeWindowedPreferences(preferenceDTOs, [...realGoogleEvents, ...preferenceBlocks]);
   const fixedEvents = [...realGoogleEvents, ...preferenceBlocks, ...windowedBlocks];
-  const aiEvents = await suggestTimeBlocksWithAI(dayTasks, fixedEvents, {
-    workStart: settings.workStartMinute,
-    workEnd: settings.workEndMinute,
-    nowMinutes,
-    freeformContext,
-  });
+  const aiEvents =
+    offsetDays === 0
+      ? await suggestTimeBlocksWithAI(dayTasks, fixedEvents, {
+          workStart: settings.workStartMinute,
+          workEnd: settings.workEndMinute,
+          nowMinutes,
+          freeformContext,
+        })
+      : suggestTimeBlocks(dayTasks, fixedEvents, {
+          workStart: settings.workStartMinute,
+          workEnd: settings.workEndMinute,
+          nowMinutes,
+        });
 
   let syncedIds = new Set<string>();
   if (googleAccount) {

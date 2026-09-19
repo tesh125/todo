@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
+import { prisma } from "@/lib/prisma";
 import { TaskDTO } from "@/lib/types";
 import { estimateTaskDuration } from "@/lib/estimateDuration";
 import {
@@ -52,10 +53,11 @@ const SYSTEM_PROMPT = `You are a scheduling assistant for a personal daily plann
 Rules:
 1. Never overlap a busy block already on the calendar.
 2. Estimate a realistic duration for each task from what it actually involves, not a flat default — a quick call/email/text is short (10-20 min), focused admin/editing work is short-medium (20-40 min), writing or creative work is medium (30-60 min), and deep, complex, or research-heavy work is long (60-120+ min).
-3. Don't schedule more than about 2-3 hours of deep, cognitively demanding work back-to-back. Insert a short walk/break (10-20 min) between such stretches — as its own entry in "breaks", not as a task.
+3. Never schedule more than 3 hours of deep, cognitively demanding work back-to-back. Insert a 30 minute walk/break right after any such stretch reaches 3 hours — as its own entry in "breaks", not as a task.
 4. Stay within the given workday bounds, and don't place anything before "now" if a current time is given.
 5. Weigh the user's stated preferences when ordering and placing tasks (e.g. "prefers deep work in the morning").
 6. It's fine to leave some tasks unscheduled if the day is genuinely full — don't cram everything in.
+7. When several tasks are similar in kind (e.g. a handful of quick emails/calls, or a few small edits), group them back-to-back with no gap between them rather than scattering them through the day — it cuts down on context-switching. Only group tasks that are genuinely alike; don't force unrelated tasks together just to close a gap.
 
 Respond only via the schedule tool/schema. Every taskId you return must exactly match one of the ids given to you.`;
 
@@ -130,19 +132,37 @@ function overlaps(a: { start: number; end: number }, b: { start: number; end: nu
   return a.start < b.end && a.end > b.start;
 }
 
+// Saves a Sonnet-derived duration back onto the task itself (only ever
+// called for a task that didn't already have one) so it shows up as the
+// task's real estimate everywhere — the todo board included — not just for
+// today's calendar render. Best-effort: a failed write shouldn't break the
+// Time Blocks page, since the estimate still gets used for this render
+// either way.
+async function persistEstimatedMinutes(taskId: string, minutes: number): Promise<void> {
+  try {
+    await prisma.task.update({ where: { id: taskId }, data: { estimatedMinutes: minutes } });
+  } catch (err) {
+    console.error("Failed to save AI duration estimate onto the task:", err);
+  }
+}
+
 /**
- * Real "brain" behind the scheduler: sends today's (or tomorrow's) open
- * tasks, what's already busy, and the user's freeform preferences to Claude,
- * and asks it to reason about realistic durations, spacing, and breaks
- * instead of the flat keyword heuristic in suggestTimeBlocks(). Tasks with
- * an explicit time in their title skip placement (they're already fixed)
- * but still get a Sonnet duration estimate via callDurationEstimateModel().
- * Falls back to the keyword heuristic whenever there's no API key, nothing
- * to schedule, or an API call fails for any reason — this must never be the
- * thing that breaks the Time Blocks page. Every block the scheduling model
- * returns is re-validated against the busy list server-side before being
- * trusted, so a hallucinated or overlapping placement is dropped rather
- * than double-booked.
+ * Real "brain" behind the scheduler: sends a day's open tasks, what's
+ * already busy, and the user's freeform preferences to Claude, and asks it
+ * to reason about realistic durations, spacing/grouping, and breaks instead
+ * of the flat keyword heuristic in suggestTimeBlocks(). Only called for
+ * *today* — the caller (calendar/page.tsx) shows tomorrow via the plain
+ * heuristic instead, so a page load never burns more than one day's worth of
+ * model calls. Tasks with an explicit time in their title skip placement
+ * (they're already fixed) but still get a Sonnet duration estimate via
+ * callDurationEstimateModel(). Falls back to the keyword heuristic whenever
+ * there's no API key, nothing to schedule, or an API call fails for any
+ * reason — this must never be the thing that breaks the Time Blocks page.
+ * Every block the scheduling model returns is re-validated against the busy
+ * list server-side before being trusted, so a hallucinated or overlapping
+ * placement is dropped rather than double-booked. Any task that didn't
+ * already have an estimatedMinutes gets Sonnet's estimate saved back onto
+ * it, so it shows up as the task's real estimate on the todo board too.
  */
 export async function suggestTimeBlocksWithAI(
   dayTasks: TaskDTO[],
@@ -195,6 +215,12 @@ export async function suggestTimeBlocksWithAI(
     };
   });
 
+  await Promise.all(
+    explicitTasks
+      .filter(({ task }) => task.estimatedMinutes == null && aiDurations.has(task.id))
+      .map(({ task }) => persistEstimatedMinutes(task.id, aiDurations.get(task.id)!))
+  );
+
   if (flexibleTasks.length === 0) return explicitBlocks;
 
   const busy = [...existingEvents, ...explicitBlocks];
@@ -236,6 +262,9 @@ export async function suggestTimeBlocksWithAI(
       accepted.push(block);
       taken.push(block);
       scheduledTaskIds.add(t.taskId);
+      if (task.estimatedMinutes == null) {
+        await persistEstimatedMinutes(task.id, t.endMinute - t.startMinute);
+      }
     }
 
     for (const b of result.breaks) {
