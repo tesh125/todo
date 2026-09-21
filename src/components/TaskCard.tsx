@@ -43,23 +43,17 @@ function ArrowButton({
 export default function TaskCard({
   task,
   bucket,
-  isFirst,
-  isLast,
   onToggle,
   onDelete,
   onEstimateChange,
   onMoveBucket,
-  onReorder,
 }: {
   task: TaskDTO;
   bucket: Bucket;
-  isFirst: boolean;
-  isLast: boolean;
   onToggle: (task: TaskDTO) => void;
   onDelete: (task: TaskDTO) => void;
   onEstimateChange: (task: TaskDTO, minutes: number | null) => void;
   onMoveBucket: (task: TaskDTO, bucket: Bucket) => void;
-  onReorder: (task: TaskDTO, direction: "up" | "down") => void;
 }) {
   const [editingEstimate, setEditingEstimate] = useState(false);
   const [draftMinutes, setDraftMinutes] = useState(String(task.estimatedMinutes ?? ""));
@@ -148,25 +142,43 @@ export default function TaskCard({
         )}
       </div>
 
-      {/* Right-side controls: reorder within the column, push to an
-          adjacent bucket, delete. Always visible (not hover-only like
-          delete) since these are the touch/click alternative to
-          drag-and-drop, which doesn't work well on mobile. */}
+      {/* Right-side controls: push to an adjacent bucket, delete. Always
+          visible (not hover-only like delete) since these are the
+          touch/click alternative to drag-and-drop, which doesn't work well
+          on mobile. Columns sit side by side on desktop (left/right reads
+          naturally) but stack vertically on mobile, so below the sm
+          breakpoint the same back/forward move renders as up/down instead —
+          same action, oriented to match how the columns are actually laid
+          out on screen. */}
       <div className="mt-0.5 flex shrink-0 items-center gap-0.5">
-        <ArrowButton direction="up" label="Move up in priority" disabled={isFirst} onClick={() => onReorder(task, "up")} />
-        <ArrowButton direction="down" label="Move down in priority" disabled={isLast} onClick={() => onReorder(task, "down")} />
-        <ArrowButton
-          direction="back"
-          label={backBucket ? `Move to ${BUCKET_LABEL[backBucket]}` : "Move to an earlier bucket"}
-          disabled={!backBucket}
-          onClick={() => backBucket && onMoveBucket(task, backBucket)}
-        />
-        <ArrowButton
-          direction="forward"
-          label={forwardBucket ? `Move to ${BUCKET_LABEL[forwardBucket]}` : "Move to a later bucket"}
-          disabled={!forwardBucket}
-          onClick={() => forwardBucket && onMoveBucket(task, forwardBucket)}
-        />
+        <div className="hidden items-center gap-0.5 sm:flex">
+          <ArrowButton
+            direction="back"
+            label={backBucket ? `Move to ${BUCKET_LABEL[backBucket]}` : "Move to an earlier bucket"}
+            disabled={!backBucket}
+            onClick={() => backBucket && onMoveBucket(task, backBucket)}
+          />
+          <ArrowButton
+            direction="forward"
+            label={forwardBucket ? `Move to ${BUCKET_LABEL[forwardBucket]}` : "Move to a later bucket"}
+            disabled={!forwardBucket}
+            onClick={() => forwardBucket && onMoveBucket(task, forwardBucket)}
+          />
+        </div>
+        <div className="flex items-center gap-0.5 sm:hidden">
+          <ArrowButton
+            direction="up"
+            label={backBucket ? `Move to ${BUCKET_LABEL[backBucket]}` : "Move to an earlier bucket"}
+            disabled={!backBucket}
+            onClick={() => backBucket && onMoveBucket(task, backBucket)}
+          />
+          <ArrowButton
+            direction="down"
+            label={forwardBucket ? `Move to ${BUCKET_LABEL[forwardBucket]}` : "Move to a later bucket"}
+            disabled={!forwardBucket}
+            onClick={() => forwardBucket && onMoveBucket(task, forwardBucket)}
+          />
+        </div>
         <button
           onClick={() => onDelete(task)}
           aria-label="Delete task"

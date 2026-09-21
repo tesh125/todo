@@ -118,39 +118,6 @@ export default function TodoBoard({
     });
   }
 
-  // Swaps a task with its neighbor in the same column and renumbers the
-  // whole column's `order` to match the new on-screen sequence — every task
-  // starts at order 0, so a plain two-item swap wouldn't actually move
-  // anything once persisted; renumbering the column is what makes the new
-  // position stick after a reload.
-  async function reorderTask(task: TaskDTO, direction: "up" | "down") {
-    const bucket = bucketForDate(task.date);
-    const items = grouped[bucket];
-    const index = items.findIndex((t) => t.id === task.id);
-    const swapIndex = direction === "up" ? index - 1 : index + 1;
-    if (index === -1 || swapIndex < 0 || swapIndex >= items.length) return;
-
-    const reordered = [...items];
-    [reordered[index], reordered[swapIndex]] = [reordered[swapIndex], reordered[index]];
-    const orderById = new Map(reordered.map((t, i) => [t.id, i]));
-
-    setTasks((prev) => {
-      const others = prev.filter((t) => bucketForDate(t.date) !== bucket);
-      const updated = reordered.map((t) => ({ ...t, order: orderById.get(t.id)! }));
-      return [...others, ...updated];
-    });
-
-    await Promise.all(
-      reordered.map((t, i) =>
-        fetch(`/api/tasks/${t.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ order: i }),
-        })
-      )
-    );
-  }
-
   return (
     <div className="mx-auto grid max-w-7xl grid-cols-1 gap-5 p-4 sm:grid-cols-2 sm:p-8 xl:grid-cols-4">
       {showConfetti && <Confetti key={confettiKey} />}
@@ -197,18 +164,15 @@ export default function TodoBoard({
                   Nothing here
                 </p>
               )}
-              {items.map((task, index) => (
+              {items.map((task) => (
                 <TaskCard
                   key={task.id}
                   task={task}
                   bucket={col.bucket}
-                  isFirst={index === 0}
-                  isLast={index === items.length - 1}
                   onToggle={toggleTask}
                   onDelete={deleteTask}
                   onEstimateChange={updateEstimate}
                   onMoveBucket={(t, bucket) => moveTask(t.id, bucket)}
-                  onReorder={reorderTask}
                 />
               ))}
             </div>
