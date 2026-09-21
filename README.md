@@ -146,10 +146,11 @@ never breaks either way.
 npm install
 ```
 
-Point `STORE_DATABASE_URL` in `.env` at a Postgres database (a free
-[Neon](https://neon.tech) or [Supabase](https://supabase.com) project works
-fine for local dev, see `.env.example` for the connection string format),
-then:
+Point `STORE_DATABASE_URL` (and `STORE_DATABASE_URL_UNPOOLED`, if your
+database pools connections — see `prisma/schema.prisma`'s `directUrl`
+comment) in `.env` at a Postgres database (a free [Neon](https://neon.tech)
+or [Supabase](https://supabase.com) project works fine for local dev, see
+`.env.example` for the connection string format), then:
 
 ```bash
 npm run db:push   # syncs the schema to that database
@@ -178,6 +179,18 @@ marketplace integration prefixes every var it creates with the storage
 resource's name, so it's `STORE_DATABASE_URL` here. The Prisma schema
 (`prisma/schema.prisma`) reads that exact name; update it there if you ever
 reconnect a different database resource.
+
+The schema's `url` (pooled, `STORE_DATABASE_URL`) and `directUrl` (unpooled,
+`STORE_DATABASE_URL_UNPOOLED`) are deliberately different connections: a
+schema change made through the pooler can take a moment to become visible on
+other pooled sessions, which once produced exactly this symptom — a build
+logging "already in sync" while requests against that same deployment still
+threw `column does not exist`. `directUrl` routes `db push`/`migrate` around
+the pooler entirely so that can't happen. Both vars need to be set on every
+Vercel environment (Production **and** Preview) you actually load the app
+from — a Preview deployment that only has one of them (or neither) will 500
+instead of silently working, since there's no reasonable fallback for "no
+usable database connection."
 
 ## Data model
 

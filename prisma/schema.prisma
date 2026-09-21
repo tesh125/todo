@@ -7,7 +7,15 @@ datasource db {
   // Vercel's Neon marketplace integration prefixes every env var it creates
   // with the storage resource's name (here "STORE_") rather than setting a
   // plain DATABASE_URL — see README for details.
-  url      = env("STORE_DATABASE_URL")
+  url       = env("STORE_DATABASE_URL")
+  // STORE_DATABASE_URL is Neon's pooled (PgBouncer) connection, used for the
+  // app's own queries at runtime. Schema changes (`prisma db push`, run at
+  // build time) need the direct/unpooled connection instead — a DDL change
+  // made through the pooler can take a moment to become visible on other
+  // pooled sessions, which is exactly what caused a build to log "already in
+  // sync" while requests against that same deployment still 500'd with
+  // "column does not exist." directUrl routes db push/migrate around that.
+  directUrl = env("STORE_DATABASE_URL_UNPOOLED")
 }
 
 model Task {
