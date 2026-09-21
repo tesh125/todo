@@ -1,19 +1,39 @@
 "use client";
 
+import { useState } from "react";
 import { TaskDTO } from "@/lib/types";
-import { Bucket } from "@/lib/buckets";
 
 export default function TaskCard({
   task,
-  bucket,
   onToggle,
   onDelete,
+  onEstimateChange,
 }: {
   task: TaskDTO;
-  bucket: Bucket;
   onToggle: (task: TaskDTO) => void;
   onDelete: (task: TaskDTO) => void;
+  onEstimateChange: (task: TaskDTO, minutes: number | null) => void;
 }) {
+  const [editingEstimate, setEditingEstimate] = useState(false);
+  const [draftMinutes, setDraftMinutes] = useState(String(task.estimatedMinutes ?? ""));
+
+  function startEditing() {
+    setDraftMinutes(String(task.estimatedMinutes ?? ""));
+    setEditingEstimate(true);
+  }
+
+  function commitEstimate() {
+    setEditingEstimate(false);
+    const trimmed = draftMinutes.trim();
+    if (trimmed === "") {
+      if (task.estimatedMinutes !== null) onEstimateChange(task, null);
+      return;
+    }
+    const minutes = Math.round(Number(trimmed));
+    if (!Number.isFinite(minutes) || minutes <= 0 || minutes === task.estimatedMinutes) return;
+    onEstimateChange(task, minutes);
+  }
+
   return (
     <div
       draggable
@@ -42,10 +62,39 @@ export default function TaskCard({
         <p className={`text-[13.5px] leading-snug ${task.completed ? "text-muted line-through" : "text-foreground"}`}>
           {task.title}
         </p>
-        {task.estimatedMinutes && bucket === "today" && (
-          <span className="mt-1 inline-block rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
-            {task.estimatedMinutes}m
-          </span>
+        {editingEstimate ? (
+          <input
+            autoFocus
+            type="number"
+            min={1}
+            value={draftMinutes}
+            onChange={(e) => setDraftMinutes(e.target.value)}
+            onBlur={commitEstimate}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                commitEstimate();
+              }
+              if (e.key === "Escape") {
+                setDraftMinutes(String(task.estimatedMinutes ?? ""));
+                setEditingEstimate(false);
+              }
+            }}
+            aria-label="Estimated minutes"
+            className="mt-1 w-14 rounded-full border border-accent bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent outline-none"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={startEditing}
+            className={`mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors ${
+              task.estimatedMinutes
+                ? "bg-accent-soft text-accent hover:bg-accent/20"
+                : "text-muted opacity-0 group-hover:opacity-100 hover:bg-accent-soft hover:text-accent"
+            }`}
+          >
+            {task.estimatedMinutes ? `${task.estimatedMinutes}m` : "+ estimate"}
+          </button>
         )}
       </div>
 

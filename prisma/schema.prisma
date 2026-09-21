@@ -24,12 +24,19 @@ model Task {
   completedAt      DateTime?
   // Manual sort order within whatever bucket the task falls into.
   order            Int       @default(0)
-  // Rough duration estimate in minutes, used by the AI time-blocking suggestion.
+  // Rough duration estimate in minutes, guessed (Sonnet, or the keyword
+  // heuristic as a fallback) the moment the task is created, and adjustable
+  // by hand afterward. Also what the AI time-blocking suggestion uses.
   estimatedMinutes Int?
   // Once this task lands on the Time Blocks calendar and Google Calendar is
-  // connected, it becomes a real event there — this is that event's id, so
-  // it's only ever created once instead of duplicated on every page load.
+  // connected, it becomes a real event there — this is that event's id.
+  // Paired with googleEventDate (same idea as Preference's below): a task
+  // that doesn't get done still rolls forward into "today" (see
+  // bucketForDate), so its calendar slot needs to move forward with it —
+  // the stale event from the missed day gets deleted and a fresh one
+  // created for today instead of leaving it stranded in the past.
   googleEventId    String?
+  googleEventDate  String?
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 }

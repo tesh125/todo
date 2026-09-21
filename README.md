@@ -18,7 +18,12 @@ A todo list that rolls itself forward, plus a time-blocked calendar view.
   block on the calendar that nothing else can be scheduled over. Leave it
   open-ended (e.g. "prefer deep work in the morning") and it's just free-text
   context the scheduler reads alongside your tasks.
-- Drag and drop tasks between columns, check them off, or delete them.
+- Drag and drop tasks between columns, check them off, or delete them. Every
+  task gets a guessed time allotment the moment you add it (Sonnet, or the
+  keyword heuristic as a fallback) — click the `Xm` pill on a task to adjust
+  it by hand. See `estimateDurationForTask()` in `src/lib/aiScheduler.ts`.
+- A task that doesn't get done still shows up under Today automatically (see
+  `bucketForDate()` below), no matter how many days ago it was added.
 
 ## Google Calendar
 
@@ -36,7 +41,13 @@ If you connected before the dedicated calendar was added, disconnect and
 reconnect once from the Time Blocks page — creating a calendar needs the
 broader `calendar` OAuth scope, which only takes effect on a fresh consent.
 
-See `src/lib/googleCalendar.ts` for the OAuth + Calendar API calls.
+A task's calendar slot moves forward with it: if it doesn't get done, it
+rolls into Today the same way it does on the todo board, and its real event
+from the missed day gets deleted and replaced with a fresh one for today
+instead of sitting stranded in the past. See `syncTaskBlocksToGoogle()` in
+`src/lib/googleCalendar.ts` for the OAuth + Calendar API calls, and how a
+task's `googleEventId`/`googleEventDate` pair is used to tell a stale event
+from a current one (same idea as a Preference's recurring event, just below).
 
 ## Importing from Apple Notes
 
@@ -147,8 +158,10 @@ reconnect a different database resource.
 ## Data model
 
 - `Task` (`prisma/schema.prisma`): `title`, an optional `date` (day precision,
-  null means "Later"), `completed`, an `order` for manual sorting, and an
-  optional `estimatedMinutes` used by the time-block scheduler.
+  null means "Later"), `completed`, an `order` for manual sorting, an
+  optional `estimatedMinutes` (guessed on creation, adjustable, used by the
+  time-block scheduler), and `googleEventId`/`googleEventDate` for the
+  task's current Google Calendar event and which day it was created for.
 - `Preference`: `text`, `locked` (whether it's a hard calendar block), and
   `startMinute`/`endMinute` (minutes since midnight) when locked.
 - `GoogleAccount`: a single row holding the connected Google account's OAuth

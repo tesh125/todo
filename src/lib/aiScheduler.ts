@@ -52,7 +52,7 @@ const SYSTEM_PROMPT = `You are a scheduling assistant for a personal daily plann
 
 Rules:
 1. Never overlap a busy block already on the calendar.
-2. Estimate a realistic duration for each task from what it actually involves, not a flat default — a quick call/email/text is short (10-20 min), focused admin/editing work is short-medium (20-40 min), writing or creative work is medium (30-60 min), and deep, complex, or research-heavy work is long (60-120+ min).
+2. If a task already carries an estimatedMinutes, use that exact duration — it's either the user's own adjustment or an earlier real estimate, so don't second-guess it. Otherwise estimate a realistic duration from what the task actually involves, not a flat default — a quick call/email/text is short (10-20 min), focused admin/editing work is short-medium (20-40 min), writing or creative work is medium (30-60 min), and deep, complex, or research-heavy work is long (60-120+ min).
 3. Never schedule more than 3 hours of deep, cognitively demanding work back-to-back. Insert a 30 minute walk/break right after any such stretch reaches 3 hours — as its own entry in "breaks", not as a task.
 4. Stay within the given workday bounds, and don't place anything before "now" if a current time is given.
 5. Weigh the user's stated preferences when ordering and placing tasks (e.g. "prefers deep work in the morning").
@@ -88,6 +88,7 @@ async function callSchedulingModel(
       id: t.id,
       title: t.title,
       notes: t.notes ?? undefined,
+      estimatedMinutes: t.estimatedMinutes ?? undefined,
     })),
   });
 
@@ -107,9 +108,12 @@ async function callSchedulingModel(
  * Duration-only counterpart to callSchedulingModel(), for tasks whose
  * placement is already fixed (an explicit time parsed from the title) and
  * just need a realistic length — asking the full scheduling model to also
- * place these would be redundant since they don't move.
+ * place these would be redundant since they don't move. Also reused by
+ * estimateDurationForTask() below for a single brand-new task.
  */
-async function callDurationEstimateModel(tasks: TaskDTO[]): Promise<Map<string, number>> {
+async function callDurationEstimateModel(
+  tasks: Pick<TaskDTO, "id" | "title" | "notes">[]
+): Promise<Map<string, number>> {
   const client = new Anthropic();
 
   const userContent = JSON.stringify({
@@ -126,6 +130,24 @@ async function callDurationEstimateModel(tasks: TaskDTO[]): Promise<Map<string, 
 
   if (!response.parsed_output) throw new Error("AI duration estimate returned no parseable output");
   return new Map(response.parsed_output.estimates.map((e) => [e.taskId, e.minutes]));
+}
+
+/**
+ * Guesses a duration for a brand-new task the moment it's created (see
+ * POST /api/tasks), so there's something to show — and adjust — right away
+ * instead of waiting for the task to reach today's calendar. Same
+ * Sonnet-or-heuristic fallback shape as the rest of this file.
+ */
+export async function estimateDurationForTask(title: string, notes?: string | null): Promise<number> {
+  if (!isAISchedulingConfigured()) return estimateTaskDuration(title);
+
+  try {
+    const estimates = await callDurationEstimateModel([{ id: "new-task", title, notes: notes ?? null }]);
+    return estimates.get("new-task") ?? estimateTaskDuration(title);
+  } catch (err) {
+    console.error("AI duration estimate failed for a new task, falling back to the keyword heuristic:", err);
+    return estimateTaskDuration(title);
+  }
 }
 
 function overlaps(a: { start: number; end: number }, b: { start: number; end: number }): boolean {

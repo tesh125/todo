@@ -365,25 +365,55 @@ export async function createGoogleEvent(
 }
 
 /**
+ * Removes an event from the app's dedicated calendar. Used to clear out a
+ * task's stale event once its slot has moved to a new day. A 404/410 from
+ * Google (already gone) isn't treated as a failure — either way, the event
+ * no longer exists, which is exactly what's wanted.
+ */
+async function deleteGoogleEvent(eventId: string): Promise<void> {
+  const accessToken = await getValidAccessToken();
+  if (!accessToken) return;
+
+  const calendarId = await getOrCreateDedicatedCalendarId(accessToken);
+  if (!calendarId) return;
+
+  await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${eventId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+/**
  * Writes any newly-placed task block to the connected Google Calendar as a
- * real event. offsetDays: 0 = today, 1 = tomorrow, etc — a task only ever
- * gets synced once regardless of which day it was scheduled under, so this
- * is safe to call for both today's and tomorrow's blocks on the same page
- * load without double-booking. Skips blocks that aren't task-derived (real
- * Google events, locked preferences) and tasks that already have a
- * googleEventId. Returns the ids of every task that ends up with an event on
- * Google (whether just-created or already synced), so the UI can show which
- * blocks are actually on the calendar.
+ * real event. offsetDays: 0 = today, 1 = tomorrow, etc.
+ *
+ * A task's googleEventId is paired with googleEventDate (same idea as
+ * syncPreferenceBlocksToGoogle below): if the stored event is already dated
+ * for *this* sync's day, it's left alone. But if the task carries an event
+ * from an earlier day — it didn't get done, so it rolled forward into today
+ * (see bucketForDate) instead of getting a fresh slot — that stale event is
+ * deleted before a new one is created for today, so it doesn't linger in
+ * the past on the real calendar. A task with a googleEventId but no
+ * googleEventDate (set before this tracking existed) is treated as unknown
+ * rather than stale: a new event is still created for today, but the old
+ * one is left alone since there's no way to tell whether it's actually
+ * outdated.
+ *
+ * Skips blocks that aren't task-derived (real Google events, locked
+ * preferences). Returns the ids of every task that ends up with an event on
+ * Google for this day (whether just-created or already synced), so the UI
+ * can show which blocks are actually on the calendar.
  */
 export async function syncTaskBlocksToGoogle(
   blocks: CalendarEvent[],
-  tasks: { id: string; googleEventId: string | null }[],
+  tasks: { id: string; googleEventId: string | null; googleEventDate: string | null }[],
   offsetDays: number = 0
 ): Promise<Set<string>> {
   const synced = new Set<string>();
   const account = await getGoogleConnection();
   if (!account) return synced;
 
+  const dayKey = dayKeyInAppTZ(offsetDays);
   const taskById = new Map(tasks.map((t) => [t.id, t]));
 
   for (const block of blocks) {
@@ -392,14 +422,18 @@ export async function syncTaskBlocksToGoogle(
     const task = taskById.get(taskId);
     if (!task) continue;
 
-    if (task.googleEventId) {
+    if (task.googleEventId && task.googleEventDate === dayKey) {
       synced.add(taskId);
       continue;
     }
 
+    if (task.googleEventId && task.googleEventDate && task.googleEventDate !== dayKey) {
+      await deleteGoogleEvent(task.googleEventId);
+    }
+
     const eventId = await createGoogleEvent(block.title, block.start, block.end, offsetDays);
     if (eventId) {
-      await prisma.task.update({ where: { id: taskId }, data: { googleEventId: eventId } });
+      await prisma.task.update({ where: { id: taskId }, data: { googleEventId: eventId, googleEventDate: dayKey } });
       synced.add(taskId);
     }
   }

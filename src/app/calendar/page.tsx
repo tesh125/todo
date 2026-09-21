@@ -53,7 +53,7 @@ async function buildDayView({
   offsetDays: number;
   bucket: Bucket;
   taskDTOs: TaskDTO[];
-  rawTasks: Pick<Task, "id" | "googleEventId">[];
+  rawTasks: Pick<Task, "id" | "googleEventId" | "googleEventDate">[];
   preferenceDTOs: PreferenceDTO[];
   rawPreferences: { id: string; googleEventId: string | null; googleEventDate: string | null }[];
   freeformContext: string[];
