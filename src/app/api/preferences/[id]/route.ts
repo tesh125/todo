@@ -18,6 +18,7 @@ export async function PATCH(
     durationMinutes?: number | null;
     windowStartMinute?: number | null;
     windowEndMinute?: number | null;
+    daysOfWeek?: number[];
     completedDate?: string | null;
     order?: number;
   } = {};
@@ -43,6 +44,13 @@ export async function PATCH(
   if (typeof body.durationMinutes === "number" || body.durationMinutes === null) data.durationMinutes = body.durationMinutes;
   if (typeof body.windowStartMinute === "number" || body.windowStartMinute === null) data.windowStartMinute = body.windowStartMinute;
   if (typeof body.windowEndMinute === "number" || body.windowEndMinute === null) data.windowEndMinute = body.windowEndMinute;
+  if (
+    Array.isArray(body.daysOfWeek) &&
+    body.daysOfWeek.length > 0 &&
+    body.daysOfWeek.every((d: unknown) => typeof d === "number" && d >= 0 && d <= 6)
+  ) {
+    data.daysOfWeek = Array.from(new Set(body.daysOfWeek as number[]));
+  }
   if (typeof body.completedToday === "boolean") data.completedDate = body.completedToday ? todayKeyInAppTZ() : null;
   if (typeof body.order === "number") data.order = body.order;
 

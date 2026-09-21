@@ -364,6 +364,19 @@ export async function createGoogleEvent(
   return created.id ?? null;
 }
 
+// Marks a task/preference as "someone is already creating its event" the
+// moment a sync loop decides to handle it, before the (slow, network-bound)
+// createGoogleEvent call even starts. Every page load re-runs this sync, so
+// without an atomic claim, two overlapping loads (two tabs, a refresh fired
+// while the previous one hadn't finished writing back, etc.) can both read
+// googleEventId as null and both create a real duplicate event before either
+// write lands — the same race the live-calendar search in
+// findExistingEventId can't fully close, since a just-created event isn't
+// always immediately searchable either. Claiming via a single conditional
+// UPDATE is atomic at the database level, so only one concurrent caller ever
+// wins it.
+const PENDING_SENTINEL = "__pending__";
+
 /**
  * Writes any newly-placed task block to the connected Google Calendar as a
  * real event. offsetDays: 0 = today, 1 = tomorrow, etc — a task only ever
@@ -397,10 +410,19 @@ export async function syncTaskBlocksToGoogle(
       continue;
     }
 
+    const claim = await prisma.task.updateMany({
+      where: { id: taskId, googleEventId: null },
+      data: { googleEventId: PENDING_SENTINEL },
+    });
+    if (claim.count === 0) continue; // another concurrent sync already claimed this task
+
     const eventId = await createGoogleEvent(block.title, block.start, block.end, offsetDays);
     if (eventId) {
       await prisma.task.update({ where: { id: taskId }, data: { googleEventId: eventId } });
       synced.add(taskId);
+    } else {
+      // Release the claim so the next page load retries instead of getting stuck "pending" forever.
+      await prisma.task.update({ where: { id: taskId }, data: { googleEventId: null } });
     }
   }
 
@@ -437,10 +459,19 @@ export async function syncPreferenceBlocksToGoogle(
       continue;
     }
 
+    const claim = await prisma.preference.updateMany({
+      where: { id: prefId, NOT: { googleEventDate: today } },
+      data: { googleEventId: PENDING_SENTINEL, googleEventDate: today },
+    });
+    if (claim.count === 0) continue; // another concurrent sync already claimed today's event for this preference
+
     const eventId = await createGoogleEvent(block.title, block.start, block.end);
     if (eventId) {
       await prisma.preference.update({ where: { id: prefId }, data: { googleEventId: eventId, googleEventDate: today } });
       synced.add(prefId);
+    } else {
+      // Release the claim so the next page load retries instead of getting stuck "pending" forever.
+      await prisma.preference.update({ where: { id: prefId }, data: { googleEventId: null, googleEventDate: null } });
     }
   }
 

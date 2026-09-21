@@ -13,11 +13,16 @@ export type CalendarEvent = {
 /**
  * Locked preferences ("breakfast 7:00-7:30") become hard blocks on the
  * calendar, same as a real event — the scheduler treats them as busy time
- * and never places a task over them.
+ * and never places a task over them. dayOfWeek (0 = Sunday ... 6 = Saturday)
+ * filters out any locked preference that isn't scoped to that day — e.g.
+ * "Tue/Thu sales training" only shows up on Tuesdays and Thursdays.
  */
-export function lockedPreferenceEvents(preferences: PreferenceDTO[]): CalendarEvent[] {
+export function lockedPreferenceEvents(preferences: PreferenceDTO[], dayOfWeek: number): CalendarEvent[] {
   return preferences
-    .filter((p): p is PreferenceDTO & { startMinute: number; endMinute: number } => p.locked && p.startMinute !== null && p.endMinute !== null)
+    .filter(
+      (p): p is PreferenceDTO & { startMinute: number; endMinute: number } =>
+        p.locked && p.startMinute !== null && p.endMinute !== null && p.daysOfWeek.includes(dayOfWeek)
+    )
     .map((p) => ({
       id: `pref-${p.id}`,
       title: p.text,
@@ -34,12 +39,22 @@ export function lockedPreferenceEvents(preferences: PreferenceDTO[]): CalendarEv
  * Google events and exact-time locked preferences. These get placed before
  * flexible tasks, so they're guaranteed a slot; tasks schedule around them,
  * not the other way around. A non-negotiable that genuinely can't fit its
- * window today (fully booked) is skipped rather than forced.
+ * window today (fully booked) is skipped rather than forced. dayOfWeek
+ * (0 = Sunday ... 6 = Saturday) filters out any windowed preference that
+ * isn't scoped to that day.
  */
-export function placeWindowedPreferences(preferences: PreferenceDTO[], busyEvents: CalendarEvent[]): CalendarEvent[] {
+export function placeWindowedPreferences(
+  preferences: PreferenceDTO[],
+  busyEvents: CalendarEvent[],
+  dayOfWeek: number
+): CalendarEvent[] {
   const windowed = preferences.filter(
     (p): p is PreferenceDTO & { durationMinutes: number; windowStartMinute: number; windowEndMinute: number } =>
-      p.windowed && p.durationMinutes !== null && p.windowStartMinute !== null && p.windowEndMinute !== null
+      p.windowed &&
+      p.durationMinutes !== null &&
+      p.windowStartMinute !== null &&
+      p.windowEndMinute !== null &&
+      p.daysOfWeek.includes(dayOfWeek)
   );
 
   const busy = [...busyEvents].sort((a, b) => a.start - b.start);

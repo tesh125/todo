@@ -25,6 +25,7 @@ export function serializePreference(pref: Preference): PreferenceDTO {
     durationMinutes: pref.durationMinutes,
     windowStartMinute: pref.windowStartMinute,
     windowEndMinute: pref.windowEndMinute,
+    daysOfWeek: pref.daysOfWeek,
     completedToday: pref.completedDate === todayKeyInAppTZ(),
     order: pref.order,
   };

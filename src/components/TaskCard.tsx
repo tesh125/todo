@@ -1,19 +1,39 @@
 "use client";
 
+import { useState } from "react";
 import { TaskDTO } from "@/lib/types";
-import { Bucket } from "@/lib/buckets";
 
 export default function TaskCard({
   task,
-  bucket,
   onToggle,
   onDelete,
+  onEstimateChange,
 }: {
   task: TaskDTO;
-  bucket: Bucket;
   onToggle: (task: TaskDTO) => void;
   onDelete: (task: TaskDTO) => void;
+  onEstimateChange: (task: TaskDTO, minutes: number | null) => void;
 }) {
+  const [editingEstimate, setEditingEstimate] = useState(false);
+  const [draftEstimate, setDraftEstimate] = useState("");
+
+  function startEditEstimate() {
+    setDraftEstimate(task.estimatedMinutes ? String(task.estimatedMinutes) : "");
+    setEditingEstimate(true);
+  }
+
+  function saveEstimate() {
+    setEditingEstimate(false);
+    const trimmed = draftEstimate.trim();
+    if (!trimmed) {
+      onEstimateChange(task, null);
+      return;
+    }
+    const minutes = Number(trimmed);
+    if (!Number.isFinite(minutes) || minutes <= 0) return;
+    onEstimateChange(task, Math.round(minutes));
+  }
+
   return (
     <div
       draggable
@@ -42,10 +62,35 @@ export default function TaskCard({
         <p className={`text-[13.5px] leading-snug ${task.completed ? "text-muted line-through" : "text-foreground"}`}>
           {task.title}
         </p>
-        {task.estimatedMinutes && bucket === "today" && (
-          <span className="mt-1 inline-block rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent">
+        {editingEstimate ? (
+          <input
+            type="number"
+            min={1}
+            autoFocus
+            value={draftEstimate}
+            placeholder="min"
+            onChange={(e) => setDraftEstimate(e.target.value)}
+            onBlur={saveEstimate}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") saveEstimate();
+              if (e.key === "Escape") setEditingEstimate(false);
+            }}
+            className="mt-1 w-16 rounded-full border border-accent bg-background px-2 py-0.5 text-[11px] font-medium text-accent outline-none"
+          />
+        ) : task.estimatedMinutes ? (
+          <button
+            onClick={startEditEstimate}
+            className="mt-1 inline-block rounded-full bg-accent-soft px-2 py-0.5 text-[11px] font-medium text-accent hover:opacity-80"
+          >
             {task.estimatedMinutes}m
-          </span>
+          </button>
+        ) : (
+          <button
+            onClick={startEditEstimate}
+            className="mt-1 inline-block rounded-full px-2 py-0.5 text-[11px] font-medium text-muted opacity-0 transition-opacity hover:bg-accent-soft hover:text-accent group-hover:opacity-100"
+          >
+            + estimate
+          </button>
         )}
       </div>
 

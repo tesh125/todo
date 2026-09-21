@@ -46,8 +46,17 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const daysOfWeek =
+    Array.isArray(body.daysOfWeek) && body.daysOfWeek.every((d: unknown) => typeof d === "number" && d >= 0 && d <= 6)
+      ? Array.from(new Set(body.daysOfWeek as number[]))
+      : [0, 1, 2, 3, 4, 5, 6];
+
+  if ((locked || windowed) && daysOfWeek.length === 0) {
+    return NextResponse.json({ error: "Pick at least one day" }, { status: 400 });
+  }
+
   const preference = await prisma.preference.create({
-    data: { text, locked, startMinute, endMinute, windowed, durationMinutes, windowStartMinute, windowEndMinute },
+    data: { text, locked, startMinute, endMinute, windowed, durationMinutes, windowStartMinute, windowEndMinute, daysOfWeek },
   });
 
   return NextResponse.json(preference, { status: 201 });

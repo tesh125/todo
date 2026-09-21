@@ -95,6 +95,15 @@ export default function TodoBoard({
     await fetch(`/api/tasks/${task.id}`, { method: "DELETE" });
   }
 
+  async function updateEstimate(task: TaskDTO, minutes: number | null) {
+    setTasks((t) => t.map((x) => (x.id === task.id ? { ...x, estimatedMinutes: minutes } : x)));
+    await fetch(`/api/tasks/${task.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ estimatedMinutes: minutes }),
+    });
+  }
+
   async function moveTask(taskId: string, bucket: Bucket) {
     const task = tasks.find((t) => t.id === taskId);
     if (!task || bucketForDate(task.date) === bucket) return;
@@ -156,7 +165,13 @@ export default function TodoBoard({
                 </p>
               )}
               {items.map((task) => (
-                <TaskCard key={task.id} task={task} bucket={col.bucket} onToggle={toggleTask} onDelete={deleteTask} />
+                <TaskCard
+                  key={task.id}
+                  task={task}
+                  onToggle={toggleTask}
+                  onDelete={deleteTask}
+                  onEstimateChange={updateEstimate}
+                />
               ))}
             </div>
           </div>

@@ -87,6 +87,11 @@ model Preference {
   durationMinutes   Int?
   windowStartMinute Int?
   windowEndMinute   Int?
+  // Which days a locked or windowed non-negotiable applies on: 0 = Sunday
+  // ... 6 = Saturday. Defaults to every day, matching the original
+  // always-recurring behavior. A freeform (non-locked, non-windowed)
+  // preference ignores this — it's just context text, never day-scoped.
+  daysOfWeek        Int[]   @default([0, 1, 2, 3, 4, 5, 6])
   // Unlike a Task's googleEventId (created once, ever), a preference recurs
   // every day and can land at a different time each day (especially a
   // windowed one), so a single event can't represent it. Instead this is

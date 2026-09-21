@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { serializePreference, serializeTask } from "@/lib/serialize";
+import { dayOfWeekInAppTZ } from "@/lib/timezone";
 import TodoBoard from "@/components/TodoBoard";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +14,11 @@ export default async function TodoPage() {
     }),
   ]);
 
+  // Only show non-negotiables actually scoped to today, e.g. a Tue/Thu-only
+  // one shouldn't appear (or be checkable) on a Wednesday.
+  const todayDow = dayOfWeekInAppTZ(0);
+  const dailyToday = preferences.filter((p) => p.daysOfWeek.includes(todayDow));
+
   return (
     <div>
       <header className="border-b border-border bg-surface px-8 py-6">
@@ -21,7 +27,7 @@ export default async function TodoPage() {
           Anything left in Tomorrow moves itself into Today the moment the day turns over.
         </p>
       </header>
-      <TodoBoard initialTasks={tasks.map(serializeTask)} initialDaily={preferences.map(serializePreference)} />
+      <TodoBoard initialTasks={tasks.map(serializeTask)} initialDaily={dailyToday.map(serializePreference)} />
     </div>
   );
 }

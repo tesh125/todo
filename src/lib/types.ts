@@ -18,6 +18,9 @@ export type PreferenceDTO = {
   durationMinutes: number | null;
   windowStartMinute: number | null;
   windowEndMinute: number | null;
+  // Which days (0 = Sunday ... 6 = Saturday) a locked/windowed non-negotiable
+  // applies on. Ignored for freeform preferences.
+  daysOfWeek: number[];
   // Whether this non-negotiable (locked or windowed) has been checked off
   // for today specifically — resets on its own the next day.
   completedToday: boolean;

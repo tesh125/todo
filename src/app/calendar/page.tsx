@@ -11,7 +11,7 @@ import {
   syncTaskBlocksToGoogle,
 } from "@/lib/googleCalendar";
 import { getSettings } from "@/lib/settings";
-import { dayKeyInAppTZ, nowMinutesInAppTZ } from "@/lib/timezone";
+import { dayKeyInAppTZ, dayOfWeekInAppTZ, nowMinutesInAppTZ } from "@/lib/timezone";
 import { PreferenceDTO, SettingsDTO, TaskDTO } from "@/lib/types";
 import DayTabs from "@/components/DayTabs";
 import GoogleConnect from "@/components/GoogleConnect";
@@ -69,9 +69,10 @@ async function buildDayView({
   );
   const realGoogleEvents = (googleEvents ?? []).filter((e) => !knownEventIds.has(e.id));
 
+  const dayOfWeek = dayOfWeekInAppTZ(offsetDays);
   const dayTasks = taskDTOs.filter((t) => bucketForDate(t.date) === bucket);
-  const preferenceBlocks = lockedPreferenceEvents(preferenceDTOs);
-  const windowedBlocks = placeWindowedPreferences(preferenceDTOs, [...realGoogleEvents, ...preferenceBlocks]);
+  const preferenceBlocks = lockedPreferenceEvents(preferenceDTOs, dayOfWeek);
+  const windowedBlocks = placeWindowedPreferences(preferenceDTOs, [...realGoogleEvents, ...preferenceBlocks], dayOfWeek);
   const fixedEvents = [...realGoogleEvents, ...preferenceBlocks, ...windowedBlocks];
   const aiEvents = await suggestTimeBlocksWithAI(dayTasks, fixedEvents, {
     workStart: settings.workStartMinute,

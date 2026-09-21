@@ -51,6 +51,12 @@ export function dayKeyInAppTZ(offsetDays: number): string {
   }).format(addDays(new Date(), offsetDays));
 }
 
+/** Day of week (0 = Sunday ... 6 = Saturday) in APP_TIMEZONE, for any day offset from today. */
+export function dayOfWeekInAppTZ(offsetDays: number): number {
+  const date = offsetDays === 0 ? new Date() : addDays(new Date(), offsetDays);
+  return toZonedTime(date, APP_TIMEZONE).getDay();
+}
+
 /** Same as todayMidnightUTC(), but for any day offset from today. */
 export function dayMidnightUTC(offsetDays: number): Date {
   return fromZonedTime(`${dayKeyInAppTZ(offsetDays)} 00:00:00`, APP_TIMEZONE);

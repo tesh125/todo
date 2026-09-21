@@ -27,6 +27,39 @@ function DeleteButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+const DAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+
+function daysSummary(days: number[]): string | null {
+  if (days.length === 7) return null; // "every day" — no badge needed
+  const short = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  return [...days].sort().map((d) => short[d]).join(", ");
+}
+
+function DayPicker({ value, onChange }: { value: number[]; onChange: (days: number[]) => void }) {
+  function toggle(day: number) {
+    const next = value.includes(day) ? value.filter((d) => d !== day) : [...value, day];
+    onChange(next);
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      {DAY_LABELS.map((label, day) => (
+        <button
+          key={day}
+          type="button"
+          onClick={() => toggle(day)}
+          className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[11px] font-medium transition-colors ${
+            value.includes(day) ? "bg-accent text-accent-foreground" : "bg-accent-soft text-muted hover:text-foreground"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function EditButton({ onClick }: { onClick: () => void }) {
   return (
     <button
@@ -64,6 +97,7 @@ export default function PreferencesBoard({
   const [draftDuration, setDraftDuration] = useState("30");
   const [draftWindowStart, setDraftWindowStart] = useState("12:00");
   const [draftWindowEnd, setDraftWindowEnd] = useState("17:00");
+  const [draftDays, setDraftDays] = useState<number[]>(ALL_DAYS);
   const [error, setError] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -73,6 +107,7 @@ export default function PreferencesBoard({
   const [editDuration, setEditDuration] = useState("");
   const [editWindowStart, setEditWindowStart] = useState("");
   const [editWindowEnd, setEditWindowEnd] = useState("");
+  const [editDays, setEditDays] = useState<number[]>(ALL_DAYS);
   const [editError, setEditError] = useState<string | null>(null);
 
   function handleTextChange(value: string) {
@@ -131,6 +166,11 @@ export default function PreferencesBoard({
       return;
     }
 
+    if ((locked || windowed) && draftDays.length === 0) {
+      setError("Pick at least one day.");
+      return;
+    }
+
     const res = await fetch("/api/preferences", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -143,6 +183,7 @@ export default function PreferencesBoard({
         durationMinutes,
         windowStartMinute,
         windowEndMinute,
+        daysOfWeek: locked || windowed ? draftDays : ALL_DAYS,
       }),
     });
     if (!res.ok) {
@@ -156,6 +197,7 @@ export default function PreferencesBoard({
     setDraftMode("freeform");
     setModeTouched(false);
     setAutoDetected(false);
+    setDraftDays(ALL_DAYS);
   }
 
   async function deletePreference(pref: PreferenceDTO) {
@@ -172,6 +214,7 @@ export default function PreferencesBoard({
     setEditDuration(pref.durationMinutes !== null ? String(pref.durationMinutes) : "30");
     setEditWindowStart(pref.windowStartMinute !== null ? minutesToTimeInputValue(pref.windowStartMinute) : "12:00");
     setEditWindowEnd(pref.windowEndMinute !== null ? minutesToTimeInputValue(pref.windowEndMinute) : "17:00");
+    setEditDays(pref.daysOfWeek.length > 0 ? pref.daysOfWeek : ALL_DAYS);
   }
 
   function cancelEdit() {
@@ -195,8 +238,13 @@ export default function PreferencesBoard({
         setEditError("End time has to be after start time.");
         return;
       }
+      if (editDays.length === 0) {
+        setEditError("Pick at least one day.");
+        return;
+      }
       body.startMinute = startMinute;
       body.endMinute = endMinute;
+      body.daysOfWeek = editDays;
     } else if (pref.windowed) {
       const durationMinutes = Number(editDuration);
       const windowStartMinute = timeInputValueToMinutes(editWindowStart);
@@ -212,9 +260,14 @@ export default function PreferencesBoard({
         setEditError("Give it a duration that fits inside the window.");
         return;
       }
+      if (editDays.length === 0) {
+        setEditError("Pick at least one day.");
+        return;
+      }
       body.durationMinutes = durationMinutes;
       body.windowStartMinute = windowStartMinute;
       body.windowEndMinute = windowEndMinute;
+      body.daysOfWeek = editDays;
     }
 
     const res = await fetch(`/api/preferences/${pref.id}`, {
@@ -282,6 +335,13 @@ export default function PreferencesBoard({
             </div>
           )}
 
+          {(draftMode === "fixed" || draftMode === "windowed") && (
+            <div className="flex items-center gap-2 text-[13px]">
+              <span className="text-[11px] text-muted">On</span>
+              <DayPicker value={draftDays} onChange={setDraftDays} />
+            </div>
+          )}
+
           {draftMode === "windowed" && (
             <div className="flex flex-col gap-2 text-[13px]">
               <div className="flex items-center gap-2">
@@ -308,8 +368,8 @@ export default function PreferencesBoard({
                 />
               </div>
               <span className="text-[11px] text-muted">
-                Happens every day somewhere in that window, fit around whatever else is on the calendar. Tasks schedule
-                around it, not the other way around.
+                Happens on the days picked above, somewhere in that window, fit around whatever else is on the
+                calendar. Tasks schedule around it, not the other way around.
               </span>
             </div>
           )}
@@ -356,6 +416,10 @@ export default function PreferencesBoard({
                     className="rounded-lg border border-border bg-background px-2 py-1.5 outline-none focus:border-accent"
                   />
                 </div>
+                <div className="flex items-center gap-2 text-[13px]">
+                  <span className="text-[11px] text-muted">On</span>
+                  <DayPicker value={editDays} onChange={setEditDays} />
+                </div>
                 {editError && <p className="text-[12px] text-red-500">{editError}</p>}
                 <div className="flex gap-2">
                   <button onClick={() => saveEdit(pref)} className="rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-foreground">
@@ -373,6 +437,9 @@ export default function PreferencesBoard({
               >
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "var(--preference)" }} />
                 <p className="min-w-0 flex-1 truncate text-[13.5px]">{pref.text}</p>
+                {daysSummary(pref.daysOfWeek) && (
+                  <span className="shrink-0 text-[11px] text-muted">{daysSummary(pref.daysOfWeek)}</span>
+                )}
                 {pref.startMinute !== null && pref.endMinute !== null && (
                   <span className="shrink-0 rounded-full bg-preference-soft px-2 py-0.5 text-[11px] font-medium" style={{ color: "var(--preference)" }}>
                     {formatMinutes(pref.startMinute)} – {formatMinutes(pref.endMinute)}
@@ -388,7 +455,9 @@ export default function PreferencesBoard({
 
       <div className="mt-6">
         <h2 className="mb-2 text-[13px] font-semibold text-muted">Non-negotiables</h2>
-        <p className="mb-2 text-[12px] text-muted">Happen every day, somewhere in their window, no matter what.</p>
+        <p className="mb-2 text-[12px] text-muted">
+          Happen on their picked days (every day by default), somewhere in their window, no matter what.
+        </p>
         <div className="flex flex-col gap-2">
           {windowed.length === 0 && (
             <p className="rounded-xl border border-dashed border-border px-3 py-4 text-center text-xs text-muted">
@@ -426,6 +495,10 @@ export default function PreferencesBoard({
                     className="rounded-lg border border-border bg-background px-2 py-1.5 outline-none focus:border-accent"
                   />
                 </div>
+                <div className="flex items-center gap-2 text-[13px]">
+                  <span className="text-[11px] text-muted">On</span>
+                  <DayPicker value={editDays} onChange={setEditDays} />
+                </div>
                 {editError && <p className="text-[12px] text-red-500">{editError}</p>}
                 <div className="flex gap-2">
                   <button onClick={() => saveEdit(pref)} className="rounded-lg bg-accent px-3 py-1.5 text-[12px] font-medium text-accent-foreground">
@@ -443,6 +516,9 @@ export default function PreferencesBoard({
               >
                 <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: "var(--preference)" }} />
                 <p className="min-w-0 flex-1 truncate text-[13.5px]">{pref.text}</p>
+                {daysSummary(pref.daysOfWeek) && (
+                  <span className="shrink-0 text-[11px] text-muted">{daysSummary(pref.daysOfWeek)}</span>
+                )}
                 {pref.durationMinutes !== null && pref.windowStartMinute !== null && pref.windowEndMinute !== null && (
                   <span className="shrink-0 rounded-full bg-preference-soft px-2 py-0.5 text-[11px] font-medium" style={{ color: "var(--preference)" }}>
                     {pref.durationMinutes}m, {formatMinutes(pref.windowStartMinute)} – {formatMinutes(pref.windowEndMinute)}
