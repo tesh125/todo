@@ -110,6 +110,15 @@ export async function getValidAccessToken(): Promise<string | null> {
     return account.accessToken;
   }
 
+  // An account can exist in the DB (connected in some other environment,
+  // e.g. production) while this environment's own GOOGLE_CLIENT_ID/SECRET
+  // aren't set (e.g. a preview deployment without them configured) — refresh
+  // would need those to call Google, so treat that as "can't use Google
+  // here" instead of crashing the whole Time Blocks page. Every caller of
+  // this function already treats null as "not connected" and degrades
+  // gracefully, same as no account existing at all.
+  if (!isGoogleConfigured()) return null;
+
   const res = await fetch("https://oauth2.googleapis.com/token", {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
