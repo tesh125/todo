@@ -41,3 +41,16 @@ export function dateForBucket(bucket: Bucket): Date | null {
   if (bucket === "tomorrow") return tomorrowDate();
   return null;
 }
+
+const BUCKET_ORDER: Bucket[] = ["today", "tomorrow", "later"];
+
+/**
+ * The bucket one step back/forward from the given one along
+ * Today -> Tomorrow -> Later, or null at either end (nothing before Today,
+ * nothing after Later). Used by the per-task move buttons on the todo board.
+ */
+export function adjacentBucket(bucket: Bucket, direction: "back" | "forward"): Bucket | null {
+  const index = BUCKET_ORDER.indexOf(bucket);
+  const targetIndex = direction === "back" ? index - 1 : index + 1;
+  return BUCKET_ORDER[targetIndex] ?? null;
+}

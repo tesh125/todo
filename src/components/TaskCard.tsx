@@ -2,17 +2,64 @@
 
 import { useState } from "react";
 import { TaskDTO } from "@/lib/types";
+import { adjacentBucket, Bucket } from "@/lib/buckets";
+
+const BUCKET_LABEL: Record<Bucket, string> = { today: "Today", tomorrow: "Tomorrow", later: "Later" };
+
+const ARROW_PATH: Record<"up" | "down" | "back" | "forward", string> = {
+  up: "M4 10l4-4 4 4",
+  down: "M4 6l4 4 4-4",
+  back: "M10 4l-4 4 4 4",
+  forward: "M6 4l4 4-4 4",
+};
+
+function ArrowButton({
+  direction,
+  label,
+  disabled,
+  onClick,
+}: {
+  direction: "up" | "down" | "back" | "forward";
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="shrink-0 rounded-md p-0.5 text-muted transition-colors hover:bg-accent-soft hover:text-foreground disabled:pointer-events-none disabled:opacity-20"
+    >
+      <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
+        <path d={ARROW_PATH[direction]} stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    </button>
+  );
+}
 
 export default function TaskCard({
   task,
+  bucket,
+  isFirst,
+  isLast,
   onToggle,
   onDelete,
   onEstimateChange,
+  onMoveBucket,
+  onReorder,
 }: {
   task: TaskDTO;
+  bucket: Bucket;
+  isFirst: boolean;
+  isLast: boolean;
   onToggle: (task: TaskDTO) => void;
   onDelete: (task: TaskDTO) => void;
   onEstimateChange: (task: TaskDTO, minutes: number | null) => void;
+  onMoveBucket: (task: TaskDTO, bucket: Bucket) => void;
+  onReorder: (task: TaskDTO, direction: "up" | "down") => void;
 }) {
   const [editingEstimate, setEditingEstimate] = useState(false);
   const [draftMinutes, setDraftMinutes] = useState(String(task.estimatedMinutes ?? ""));
@@ -33,6 +80,9 @@ export default function TaskCard({
     if (!Number.isFinite(minutes) || minutes <= 0 || minutes === task.estimatedMinutes) return;
     onEstimateChange(task, minutes);
   }
+
+  const backBucket = adjacentBucket(bucket, "back");
+  const forwardBucket = adjacentBucket(bucket, "forward");
 
   return (
     <div
@@ -98,15 +148,35 @@ export default function TaskCard({
         )}
       </div>
 
-      <button
-        onClick={() => onDelete(task)}
-        aria-label="Delete task"
-        className="mt-0.5 shrink-0 rounded-md p-0.5 text-muted opacity-0 transition-opacity hover:bg-accent-soft hover:text-foreground group-hover:opacity-100"
-      >
-        <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
-          <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-        </svg>
-      </button>
+      {/* Right-side controls: reorder within the column, push to an
+          adjacent bucket, delete. Always visible (not hover-only like
+          delete) since these are the touch/click alternative to
+          drag-and-drop, which doesn't work well on mobile. */}
+      <div className="mt-0.5 flex shrink-0 items-center gap-0.5">
+        <ArrowButton direction="up" label="Move up in priority" disabled={isFirst} onClick={() => onReorder(task, "up")} />
+        <ArrowButton direction="down" label="Move down in priority" disabled={isLast} onClick={() => onReorder(task, "down")} />
+        <ArrowButton
+          direction="back"
+          label={backBucket ? `Move to ${BUCKET_LABEL[backBucket]}` : "Move to an earlier bucket"}
+          disabled={!backBucket}
+          onClick={() => backBucket && onMoveBucket(task, backBucket)}
+        />
+        <ArrowButton
+          direction="forward"
+          label={forwardBucket ? `Move to ${BUCKET_LABEL[forwardBucket]}` : "Move to a later bucket"}
+          disabled={!forwardBucket}
+          onClick={() => forwardBucket && onMoveBucket(task, forwardBucket)}
+        />
+        <button
+          onClick={() => onDelete(task)}
+          aria-label="Delete task"
+          className="shrink-0 rounded-md p-0.5 text-muted opacity-0 transition-opacity hover:bg-accent-soft hover:text-foreground group-hover:opacity-100"
+        >
+          <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none">
+            <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+        </button>
+      </div>
     </div>
   );
 }

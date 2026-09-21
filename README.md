@@ -19,9 +19,12 @@ A todo list that rolls itself forward, plus a time-blocked calendar view.
   open-ended (e.g. "prefer deep work in the morning") and it's just free-text
   context the scheduler reads alongside your tasks.
 - Drag and drop tasks between columns, check them off, or delete them. Every
-  task gets a guessed time allotment the moment you add it (Sonnet, or the
-  keyword heuristic as a fallback) — click the `Xm` pill on a task to adjust
-  it by hand. See `estimateDurationForTask()` in `src/lib/aiScheduler.ts`.
+  task also has its own move (◀ ▶, to the adjacent bucket) and reorder
+  (▲ ▼, within its column) buttons — a click-based alternative to
+  drag-and-drop that's easier on mobile. Every task gets a guessed time
+  allotment the moment you add it (Sonnet, or the keyword heuristic as a
+  fallback) — click the `Xm` pill on a task to adjust it by hand. See
+  `estimateDurationForTask()` in `src/lib/aiScheduler.ts`.
 - A task that doesn't get done still shows up under Today automatically (see
   `bucketForDate()` below), no matter how many days ago it was added.
 
