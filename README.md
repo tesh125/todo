@@ -31,11 +31,13 @@ A todo list that rolls itself forward, plus a time-blocked calendar view.
 ## Google Calendar
 
 Connect from the Time Blocks page. That kicks off a normal OAuth login, then
-the app reads your real events for today from your main calendar (so it
-knows what's busy), and writes every AI-placed and preference block as a
-real event onto its own dedicated calendar named "Todo Blocker" (created
-automatically on first sync) rather than cluttering your main one. Setup
-needs three env vars:
+the app reads today's events across **every calendar your Google account can
+see** — not just your primary one, so a shared or subscribed calendar counts
+as busy too (see `listAllCalendarIds()`/`getGoogleEventsForDay()` in
+`src/lib/googleCalendar.ts`) — and writes every AI-placed, preference, and
+break block as a real event onto its own dedicated calendar named
+"Todo Blocker" (created automatically on first sync) rather than cluttering
+your main one. Setup needs three env vars:
 
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` from a Google Cloud OAuth client
 - `GOOGLE_REDIRECT_URI` set to `<your app's base URL>/api/auth/google/callback`
@@ -44,6 +46,14 @@ If you connected before the dedicated calendar was added, disconnect and
 reconnect once from the Time Blocks page — creating a calendar needs the
 broader `calendar` OAuth scope, which only takes effect on a fresh consent.
 
+**Avoiding duplicate events**: the AI plan gets recomputed from scratch on
+every Time Blocks page load, so the same task or break can land at a
+slightly different time on two different loads. Rather than matching by
+exact time slot, `createGoogleEvent()` looks for an existing event with the
+same title *anywhere that day* and reschedules it in place instead of
+creating a second one — so re-visiting the page repeatedly (or a browser
+prefetch — see below) doesn't pile up duplicates on your real calendar.
+
 A task's calendar slot moves forward with it: if it doesn't get done, it
 rolls into Today the same way it does on the todo board, and its real event
 from the missed day gets deleted and replaced with a fresh one for today
@@ -51,6 +61,15 @@ instead of sitting stranded in the past. See `syncTaskBlocksToGoogle()` in
 `src/lib/googleCalendar.ts` for the OAuth + Calendar API calls, and how a
 task's `googleEventId`/`googleEventDate` pair is used to tell a stale event
 from a current one (same idea as a Preference's recurring event, just below).
+
+The scheduler's suggested walk breaks get synced too, as a real "Walk break"
+event (`syncBreakBlocksToGoogle()`) — they used to only show in the in-app
+Time Blocks view.
+
+The Time Blocks nav link has `prefetch={false}` (see `src/components/
+Sidebar.tsx`) since, unlike the rest of the app, just loading that page syncs
+to your real calendar — a background prefetch firing that as a side effect
+of the link merely scrolling into view isn't something you asked for.
 
 ## Importing from Apple Notes
 

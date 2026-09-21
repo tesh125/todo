@@ -7,6 +7,7 @@ import { suggestTimeBlocksWithAI } from "@/lib/aiScheduler";
 import {
   getGoogleConnection,
   getGoogleEventsForDay,
+  syncBreakBlocksToGoogle,
   syncPreferenceBlocksToGoogle,
   syncTaskBlocksToGoogle,
 } from "@/lib/googleCalendar";
@@ -73,7 +74,10 @@ async function buildDayView({
       ...rawPreferences.filter((p) => p.googleEventDate === dayKey).map((p) => p.googleEventId),
     ].filter((id): id is string => Boolean(id))
   );
-  const realGoogleEvents = (googleEvents ?? []).filter((e) => !knownEventIds.has(e.id));
+  // Breaks aren't backed by a DB row (see syncBreakBlocksToGoogle), so
+  // there's no id to track the same way — excluded by its fixed sync title
+  // instead. Same "would render twice" reasoning as knownEventIds above.
+  const realGoogleEvents = (googleEvents ?? []).filter((e) => !knownEventIds.has(e.id) && e.title !== "Walk break");
 
   const dayTasks = taskDTOs.filter((t) => bucketForDate(t.date) === bucket);
   const preferenceBlocks = lockedPreferenceEvents(preferenceDTOs);
@@ -96,7 +100,8 @@ async function buildDayView({
   let syncedIds = new Set<string>();
   if (googleAccount) {
     const taskSync = await syncTaskBlocksToGoogle(aiEvents, rawTasks, offsetDays);
-    syncedIds = taskSync;
+    const breakSync = await syncBreakBlocksToGoogle(aiEvents, offsetDays);
+    syncedIds = new Set([...taskSync, ...breakSync]);
     if (offsetDays === 0) {
       const prefSync = await syncPreferenceBlocksToGoogle([...preferenceBlocks, ...windowedBlocks], rawPreferences);
       syncedIds = new Set([...syncedIds, ...prefSync]);

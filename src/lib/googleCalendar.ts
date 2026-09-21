@@ -282,24 +282,27 @@ export async function getGoogleEventsForDay(offsetDays: number): Promise<Calenda
 }
 
 /**
- * Looks for an event already sitting on the given calendar with the exact
- * same title and time slot, so createGoogleEvent can adopt it instead of
- * making a duplicate. Covers cases the googleEventId dedup alone wouldn't —
- * e.g. the DB's googleEventId getting lost or reset, or two sync calls
- * racing each other — by checking the live calendar itself, not just our
- * own record of what we already did.
+ * Looks for an event already sitting on the given calendar, that day, with
+ * this exact title — so createGoogleEvent can adopt (and, if needed,
+ * reschedule) it instead of making a duplicate. Matches on title alone
+ * within the whole day, *not* an exact time slot: the AI plan gets
+ * recomputed from scratch on every Time Blocks page load, so the same task
+ * can land at a slightly different time on two different loads, and an
+ * exact-time match would miss that and create a second event. Also covers
+ * cases the googleEventId dedup alone wouldn't — e.g. the DB's
+ * googleEventId getting lost or reset, or two sync calls racing each
+ * other — by checking the live calendar itself, not just our own record of
+ * what we already did.
  */
-async function findExistingEventId(
+async function findExistingEventForTitle(
   accessToken: string,
   calendarId: string,
   title: string,
-  startMinute: number,
-  endMinute: number,
   offsetDays: number
-): Promise<string | null> {
+): Promise<{ id: string; startMinute: number; endMinute: number } | null> {
   const params = new URLSearchParams({
-    timeMin: minutesOnDayToUTC(offsetDays, startMinute).toISOString(),
-    timeMax: minutesOnDayToUTC(offsetDays, endMinute).toISOString(),
+    timeMin: dayMidnightUTC(offsetDays).toISOString(),
+    timeMax: minutesOnDayToUTC(offsetDays, 24 * 60).toISOString(),
     singleEvents: "true",
     q: title,
   });
@@ -313,23 +316,42 @@ async function findExistingEventId(
   const data = await res.json();
   const items: GoogleEvent[] = data.items ?? [];
 
-  const match = items.find(
-    (e) =>
-      e.summary === title &&
-      e.start?.dateTime &&
-      e.end?.dateTime &&
-      minutesInAppTZFromISO(e.start.dateTime) === startMinute &&
-      minutesInAppTZFromISO(e.end.dateTime) === endMinute
-  );
-  return match?.id ?? null;
+  const match = items.find((e) => e.summary === title && e.start?.dateTime && e.end?.dateTime);
+  if (!match?.start?.dateTime || !match?.end?.dateTime) return null;
+
+  return {
+    id: match.id,
+    startMinute: minutesInAppTZFromISO(match.start.dateTime),
+    endMinute: minutesInAppTZFromISO(match.end.dateTime),
+  };
+}
+
+/** Moves an existing event to a new time slot on the same day. */
+async function updateGoogleEventTime(
+  accessToken: string,
+  calendarId: string,
+  eventId: string,
+  startMinute: number,
+  endMinute: number,
+  offsetDays: number
+): Promise<void> {
+  await fetch(`https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events/${eventId}`, {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      start: { dateTime: minutesOnDayToUTC(offsetDays, startMinute).toISOString() },
+      end: { dateTime: minutesOnDayToUTC(offsetDays, endMinute).toISOString() },
+    }),
+  });
 }
 
 /**
  * Creates a real event on the connected Google Calendar for a task block
- * placed on the Time Blocks calendar — or, if one with the same title and
- * time slot already exists there, returns that one instead of creating a
- * duplicate. offsetDays: 0 = today, 1 = tomorrow, etc. Returns null if
- * there's no connection or the request fails.
+ * placed on the Time Blocks calendar — or, if one with the same title
+ * already exists there that day, reuses that one instead of creating a
+ * duplicate (rescheduling it first if the AI moved the task to a different
+ * time since it was created). offsetDays: 0 = today, 1 = tomorrow, etc.
+ * Returns null if there's no connection or the request fails.
  */
 export async function createGoogleEvent(
   title: string,
@@ -343,8 +365,13 @@ export async function createGoogleEvent(
   const calendarId = await getOrCreateDedicatedCalendarId(accessToken);
   if (!calendarId) return null;
 
-  const existingId = await findExistingEventId(accessToken, calendarId, title, startMinute, endMinute, offsetDays);
-  if (existingId) return existingId;
+  const existing = await findExistingEventForTitle(accessToken, calendarId, title, offsetDays);
+  if (existing) {
+    if (existing.startMinute !== startMinute || existing.endMinute !== endMinute) {
+      await updateGoogleEventTime(accessToken, calendarId, existing.id, startMinute, endMinute, offsetDays);
+    }
+    return existing.id;
+  }
 
   const res = await fetch(
     `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(calendarId)}/events`,
@@ -476,6 +503,32 @@ export async function syncPreferenceBlocksToGoogle(
       await prisma.preference.update({ where: { id: prefId }, data: { googleEventId: eventId, googleEventDate: today } });
       synced.add(prefId);
     }
+  }
+
+  return synced;
+}
+
+/**
+ * Writes the scheduler's suggested walk/rest breaks to the connected Google
+ * Calendar too — these were previously shown only in the in-app Time Blocks
+ * view and never actually synced. A break isn't backed by a DB row the way
+ * a Task or Preference is, so there's no googleEventId to track; instead
+ * this always syncs under the fixed title "Walk break" regardless of
+ * whatever specific wording the AI scheduler used for the block in-app
+ * (which can vary between reloads) — a stable title is what lets
+ * createGoogleEvent's title+day dedup recognize "this is the same break"
+ * across page loads and reschedule it in place, instead of creating a new
+ * Google event every time the wording happens to change.
+ */
+export async function syncBreakBlocksToGoogle(blocks: CalendarEvent[], offsetDays: number = 0): Promise<Set<string>> {
+  const synced = new Set<string>();
+  const account = await getGoogleConnection();
+  if (!account) return synced;
+
+  for (const block of blocks) {
+    if (block.source !== "break") continue;
+    const eventId = await createGoogleEvent("Walk break", block.start, block.end, offsetDays);
+    if (eventId) synced.add(block.id);
   }
 
   return synced;

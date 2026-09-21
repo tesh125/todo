@@ -93,6 +93,12 @@ function NavLinks({
             key={item.href}
             href={item.href}
             onClick={onNavigate}
+            // Time Blocks isn't a plain read: loading it syncs task/break
+            // blocks to the real Google Calendar as a side effect. Default
+            // Link prefetching would fire that sync in the background just
+            // because the link scrolled into view, not because the user
+            // actually opened the page — turned off here specifically.
+            prefetch={item.href === "/calendar" ? false : undefined}
             className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
               active
                 ? "bg-accent text-accent-foreground shadow-sm"

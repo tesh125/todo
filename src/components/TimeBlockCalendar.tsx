@@ -9,6 +9,9 @@ const PX_PER_MIN = 80 / 60;
 function underlyingId(event: CalendarEvent): string | null {
   if (event.source === "ai" && event.id.startsWith("ai-")) return event.id.slice(3);
   if (event.source === "preference" && event.id.startsWith("pref-")) return event.id.slice(5);
+  // Breaks aren't backed by a DB row, so syncBreakBlocksToGoogle keys
+  // syncedIds by the block's own id directly rather than a stripped prefix.
+  if (event.source === "break") return event.id;
   return null;
 }
 
